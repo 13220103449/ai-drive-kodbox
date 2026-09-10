@@ -12,7 +12,7 @@
         "profile_desc": "PHP profile managed by the AI Drive package",
         "backend": 11,
         "open_basedir": "/var/services/web_packages/aidrive:/var/packages/aidrive/var:/tmp:/var/services/tmp",
-        "extensions": ["curl", "gd", "iconv", "mbstring", "openssl", "fileinfo", "sqlite3", "pdo_sqlite", "zip"],
+        "extensions": ["curl", "gd", "iconv", "mbstring", "openssl", "fileinfo", "sqlite3", "pdo_sqlite", "zip", "zlib"],
         "php_settings": {
           "memory_limit": "512M",
           "upload_max_filesize": "10G",
