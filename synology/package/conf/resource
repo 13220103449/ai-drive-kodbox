@@ -32,8 +32,8 @@
       "service": "aidrive",
       "name": "aidrive",
       "display_name": "AI Drive",
-      "type": "alias",
-      "alias": "aidrive"
+      "type": "server",
+      "http_port": [8091]
     }],
     "pkg_dir_prepare": [{
       "source": "/var/packages/aidrive/target/web",
