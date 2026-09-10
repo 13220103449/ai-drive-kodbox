@@ -1,0 +1,61 @@
+kodReady.push(function(){
+	LNG.set(jsonDecode(urlDecode("{{LNG}}")));
+	Events.bind('explorer.kodApp.before',function(appList){
+		appList.push({
+			name:'{{package.id}}',
+			title:'{{package.name}}',
+			ext:"{{config.fileExt}}",
+			sort:"{{config.fileSort}}",
+			icon:'{{pluginHost}}static/images/icon.png',
+			callback:function(){
+				core.openFile('{{pluginApi}}',"{{config.openWith}}",_.toArray(arguments));
+			}
+		});
+		// 屏蔽已包含的打开方式
+		_.delay(function(){
+			if(!window.kodApp || !kodApp.remove){return;}
+			kodApp.remove('officeLive');
+			kodApp.remove('yzOffice');
+			kodApp.remove('googleDocs');
+		},100);
+	});
+
+	// wb支持的格式禁止修改
+	Events.bind('plugin.config.formAfter', function(_this){
+		var form = _this['form{{pluginName}}'];
+		if (!form || !form.$el) return;
+		form.$('.item-wbFileExt .setting-content').css('pointer-events','none');
+		return;
+	});
+
+	// 点击编辑按钮：弹窗，前端检测打开方式;防止重复绑定,退出重新登录会再次执行;
+	$('body').undelegate('#officeViewer-edit-btn button','click');
+	$('body').delegate('#officeViewer-edit-btn button','click',function(){
+		var appType = $(this).attr('apptype') || '';
+		var data = jsonDecode(base64Decode($(this).attr('data')));;
+		if(!data){return;}
+		if(!appType){ // 首次触发初始化打开方式;
+			var appList = kodApp.getApp(data.ext);
+			var appSupport = ['clientOpen','onlyoffice','wpsOffice','officeOnline'];
+			_.each(appList, function(item){
+				if(_.includes(appSupport, item.name)){appType = item.name;}
+			});
+			if(appType){
+				$box = $(this).parent();
+				_.delay(function(){$box.css('visibility','visible');}, 3000);
+			}
+			$(this).attr('apptype',appType || '');
+			return;
+		}
+
+		kodApp.open(data.path,data.ext,data.name,appType);
+		var dgId = $(this).parents('.aui-dialog').find('.aui-title-bar').attr('id');
+		_.delay(function(){
+			$.dialog.list[dgId] && $.dialog.list[dgId].close();
+		}, 500);
+	});
+
+	if($.hasKey('plugin.{{package.id}}.style')) return;
+	requireAsync("{{pluginHost}}static/app/main.css");
+});
+

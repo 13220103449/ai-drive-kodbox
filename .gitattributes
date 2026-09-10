@@ -1,0 +1,7 @@
+data/ export-ignore
+dist/ export-ignore
+.git/ export-ignore
+synology/package/INFO text eol=lf
+synology/package/conf/* text eol=lf
+synology/package/scripts/* text eol=lf
+*.sh text eol=lf

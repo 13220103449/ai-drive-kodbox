@@ -1,0 +1,35 @@
+<div class="dialog-copyright-content">
+
+    <div class="title">
+        <div class="logo logo-image hidden">{{@LNG.logo('copyright')}}</div>
+        <div class="logo-text client-down-text">{{LNG['client.down.title']}}</div>
+        <div class="info">{{LNG['client.down.desc']}}</div>
+    </div>
+
+    <div class="k-content">
+        <div class="tabs">
+            <span class="tab active" data-tab="pc">
+                <span class="tab-ic"><i class="font-icon ri-computer-line"></i> {{LNG['client.down.typePC']}}</span>
+            </span>
+            <span class="tab" data-tab="app">
+                <span class="tab-ic"><i class="font-icon ri-smartphone-line"></i> {{LNG['client.down.typeApp']}}</span>
+            </span>
+        </div>
+
+        <div class="tab-panel active" id="panel-pc">
+            <!-- <div class="grid"><i class="font-icon ri-information-line blue-3"></i></div> -->
+            <div class="grid"></div>
+            <div class="sub-view">
+                <div class="sub-header">
+                    <span class="sub-back"><i class="font-icon ri-arrow-drop-left-line"></i> {{LNG['admin.plugin.back']}}</button>
+                </div>
+                <div class="sub-icon"></div>
+                <div class="sub-list"></div>
+            </div>
+        </div>
+        <div class="tab-panel" id="panel-app">
+            <!-- <div class="grid"><i class="font-icon ri-information-line blue-3"></i></div> -->
+            <div class="grid"></div>
+        </div>
+    </div>
+</div>

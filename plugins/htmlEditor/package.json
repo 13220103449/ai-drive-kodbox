@@ -1,0 +1,62 @@
+{
+	"id":"htmlEditor",
+	"name":"{{LNG['htmlEditor.meta.title']}}",
+	"title":"{{LNG['htmlEditor.meta.title']}}",
+	"version":"1.12",
+	"source":{
+		"className":"x-item-icon x-html",
+		"icon":""
+	},
+	"category":"file",
+	"description":"{{LNG['htmlEditor.meta.desc']}}",
+	"keywords":"tinymce,html,editor",
+	"auther":{
+		"copyright":"kodcloud.",
+		"homePage":"http://www.kodcloud.com",
+	},
+	"configItem":{
+		"pluginAuth":{
+			"type":"userSelect",
+			"value":{"all":1},
+			"display":"{{LNG['admin.plugin.auth']}}",
+			"desc":"{{LNG['admin.plugin.authDesc']}}",
+			"require":1
+		},
+		"fileExt":{
+			"type":"tags",
+			"display":"{{LNG['admin.plugin.fileExt']}}",
+			"desc":"{{LNG['admin.plugin.fileExtDesc']}}",
+			"value":"htm,html,shtml"
+		},
+		"sep1001":"<hr/>",
+		
+		"fileView":{
+			"type":"switch",
+			"display":"{{LNG['htmlEditor.app.show']}}",
+			"desc":"{{LNG['htmlEditor.app.showDesc']}}",
+			"value":"1",
+			"switchItem":{"1":"fileViewSort"}
+		},
+		"fileViewSort":{
+			"type":"number",
+			"display":"{{LNG['admin.plugin.fileSort']}}",
+			"desc":"{{LNG['admin.plugin.fileSortDesc']}}",
+			"value":10
+		},
+		
+		"sep1002":"<hr/>",
+		"fileEdit":{
+			"type":"switch",
+			"display":"{{LNG['htmlEditor.app.edit']}}",
+			"desc":"{{LNG['htmlEditor.app.editDesc']}}",
+			"value":"1",
+			"switchItem":{"1":"fileEditSort"}
+		},
+		"fileEditSort":{
+			"type":"number",
+			"display":"{{LNG['admin.plugin.fileSort']}}",
+			"desc":"{{LNG['admin.plugin.fileSortDesc']}}",
+			"value":5
+		}	
+	}
+}

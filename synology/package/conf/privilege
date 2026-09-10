@@ -1,0 +1,7 @@
+{
+  "defaults": {
+    "run-as": "package"
+  },
+  "username": "aidrive",
+  "join-groupname": "http"
+}

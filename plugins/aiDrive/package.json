@@ -1,0 +1,40 @@
+{
+	"id":"aiDrive",
+	"name":"AI Drive",
+	"title":"Human + Agent unified file access",
+	"version":"0.3.0",
+	"source":{
+		"className":"font-icon ri-robot-2-fill bg-blue-6",
+		"icon":""
+	},
+	"category":"file",
+	"description":"智能体部门、独立 Agent 账号、机器密钥、完整文件 API 与审计日志。",
+	"auther":{
+		"copyright":"AI Drive",
+		"homePage":""
+	},
+	"configItem":{
+		"isOpen":{
+			"type":"switch",
+			"value":1,
+			"display":"启用 AI Drive Agent 接口",
+			"desc":"启用后，管理员可以为 KodBox 用户签发独立的 Agent 访问密钥。"
+		},
+		"githubRepo":{
+			"type":"input",
+			"value":"13220103449/ai-drive-kodbox",
+			"display":"在线更新仓库",
+			"desc":"从该 GitHub 仓库的正式 Release 检查并安装 AI Drive 更新。"
+		},
+		"pluginAuthOpen":{
+			"type":"switch",
+			"value":1,
+			"className":"hidden"
+		},
+		"pluginAuth":{
+			"type":"userSelect",
+			"value":{"all":1},
+			"className":"hidden"
+		}
+	}
+}

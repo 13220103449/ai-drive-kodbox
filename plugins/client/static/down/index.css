@@ -1,0 +1,373 @@
+.menuBar .menu-dropdown-user li.app-download{
+    display: none !important;
+}
+.artDialog.dialog-client-download:not(.dialog-max) {
+  /* position: fixed; */
+  /* left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%); */
+}
+.artDialog.dialog-client-download .dialog-copyright-content .title .client-down-text{
+    text-align: center;
+    /* font-size: 22px; */
+    padding-top: 50px;
+    font-size: 26px;
+}
+.artDialog.dialog-client-download .dialog-copyright-content .title .logo{
+    padding-top: 0px;
+    height: 80px;
+}
+.artDialog.dialog-client-download .dialog-copyright-content .title .logo img{
+    max-height: 50px;
+}
+.artDialog.dialog-client-download .dialog-copyright-content .title .info{
+    /* padding-top: 0px; */
+    text-align: center;
+    /* font-size: 1.1em; */
+    font-size: 1em;
+}
+.artDialog.dialog-client-download .k-content {
+    /* min-height: 180px;
+    padding: 20px; */
+    /* min-height: 250px; */
+    min-height: 260px;
+    padding: 0px 20px;
+}
+
+
+.artDialog.dialog-client-download .k-content .tabs {
+    display: flex;
+    align-items: center;
+    /* gap: 4px; */
+    background: #e6eaf2;
+    background: #eef0f5;
+    border-radius: 6px;
+    padding: 5px;
+    margin: 0 auto 36px;
+    max-width: 360px;
+
+    margin: 0px auto;
+    margin-top: 24px;
+}
+.artDialog.dialog-client-download .k-content .tabs .tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.artDialog.dialog-client-download .k-content .tabs .tab.active {
+    background: #fff;
+    color: #1890ff;
+    box-shadow: 0 2px 10px rgba(79, 110, 247, 0.12);
+}
+.artDialog.dialog-client-download .k-content .tabs .tab:hover, 
+.artDialog.dialog-client-download .k-content .tabs .tab:focus {
+    color: #1890ff;
+}
+
+:root {
+    --x-primary: #4ea9fd;
+    --x-primary-light: #eaf5fb;
+    --x-primary-dark: #1890ff; 
+    --x-bg: #f0f4f8;
+    --x-card: #ffffff;
+    --x-text: #1a1d26;
+    --x-text2: #5f6577;
+    --x-text3: #9ca3af;
+    --x-border: #e8ecf1;
+    --x-green: #3DDC84;
+}
+.artDialog.dialog-client-download .k-content * { margin:0; padding:0; box-sizing:border-box; }
+/* ===== Tab Panels ===== */
+.artDialog.dialog-client-download .k-content .tab-panel { display: none; }
+.artDialog.dialog-client-download .k-content .tab-panel.active { display: block; animation: fadeIn 0.32s cubic-bezier(0.4,0,0.2,1); }
+/* @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } } */
+
+/* ===== Grid ===== */
+.artDialog.dialog-client-download .k-content .grid { 
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; 
+
+    margin-top: 40px;
+}
+/* .artDialog.dialog-client-download .k-content .grid>.font-icon {
+    font-size: 36px;
+    margin-top: 30px;
+} */
+
+/* ===== Item ===== */
+.artDialog.dialog-client-download .k-content .item {
+    /* position: relative; flex: 0 0 128px; width: 128px; */
+    position: relative; flex: 0 0 88px; width: 88px;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 8px 20px; border-radius: 16px; cursor: pointer;
+    border: 1.5px solid transparent; background: transparent; min-height: 132px;
+    transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+.artDialog.dialog-client-download .k-content .item:hover {
+    background: var(--x-primary-light); border-color: rgba(79,110,247,0.12);
+    /* transform: translateY(-3px);  */
+    box-shadow: 0 8px 28px rgba(79,110,247,0.14);
+}
+.artDialog.dialog-client-download .k-content .item:active { 
+    /* transform: translateY(-1px);  */
+}
+
+.artDialog.dialog-client-download .k-content .icon-frame {
+    width: 60px; height: 60px; border-radius: 17px;
+    background: linear-gradient(145deg, #f8f9fc, #eef0f5);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.04);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px; position: relative;
+    transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+
+    /* padding-bottom: 0px; */
+}
+.artDialog.dialog-client-download .k-content .item:hover .icon-frame {
+    background: linear-gradient(145deg, #fff, #f0f3ff);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 4px 16px rgba(79,110,247,0.12);
+}
+.artDialog.dialog-client-download .k-content .icon-frame .ic { 
+    /* width: 34px; height: 34px;  */
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1); 
+
+    /* padding-bottom: 0px; */
+}
+.artDialog.dialog-client-download .k-content .item:hover .ic { transform: scale(1.1); }
+/* .artDialog.dialog-client-download .k-content .icon-frame .ic .font-icon { */
+.artDialog.dialog-client-download .k-content .icon-frame .ic .font-icon {
+    font-size: 36px;
+}
+.artDialog.dialog-client-download .k-content .sub-icon .ic .font-icon {
+    font-size: 30px;
+}
+.artDialog.dialog-client-download .k-content .ic .font-icon.win {
+    color: #1890ff;
+}
+.artDialog.dialog-client-download .k-content .ic .font-icon.android {
+    color: #a4c639;
+}
+.artDialog.dialog-client-download .k-content .ic .font-icon.linux-text {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    /* font-size: 14px; */
+    font-weight: 600;
+    color: #fff;
+    background: #000;
+    border-radius: 8px;
+    font-size: 0.8em;
+}
+
+.artDialog.dialog-client-download .k-content .item-name {
+    font-size: 13px; font-weight: 500; color: var(--x-text2);
+    text-align: center; line-height: 1.3; transition: color 0.2s, font-weight 0.2s;
+}
+.artDialog.dialog-client-download .k-content .item:hover .item-name { color: var(--x-primary); font-weight: 600; }
+
+/* ===== Overlay ===== */
+.artDialog.dialog-client-download .k-content .overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(145deg, var(--x-primary), #6b85f9);
+    border-radius: 16px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px;
+    opacity: 0; visibility: hidden; z-index: 10; padding: 12px 10px;
+    box-shadow: 0 8px 28px rgba(79,110,247,0.35);
+    transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+}
+.artDialog.dialog-client-download .k-content .item:hover .overlay { opacity: 1; visibility: visible; }
+
+.artDialog.dialog-client-download .k-content .ov-ver { font-size: 11px; color: rgba(255,255,255,0.92); font-weight: 600; letter-spacing: 0.3px; }
+.artDialog.dialog-client-download .k-content .ov-sys { 
+    font-size: 10px; color: rgba(255,255,255,0.72); text-align: center; line-height: 1.3; margin-bottom: 4px; 
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100px;
+    padding: 0px 5px;
+}
+
+.artDialog.dialog-client-download .k-content .ov-dl {
+    width: 40px; height: 40px; border: 2px solid rgba(255,255,255,0.95); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.08); transition: all 0.2s;
+
+    /* padding-bottom: 0px; */
+}
+.artDialog.dialog-client-download .k-content .item:hover .ov-dl { background: rgba(255,255,255,0.18); transform: scale(1.05); }
+.artDialog.dialog-client-download .k-content .item:hover .ov-dl .font-icon {
+    color: #fff;
+}
+
+/* 多版本 overlay (2+个) */
+.artDialog.dialog-client-download .k-content .ov-group-label { 
+    /* font-size: 11px;  */
+    color: rgba(255,255,255,0.7); font-weight: 600; letter-spacing: 0.5px; margin-bottom: 2px; 
+    
+    display: none;
+}
+.artDialog.dialog-client-download .k-content .ov-count { font-size: 20px; font-weight: 700; color: #fff; line-height: 1; margin: 2px 0; }
+.artDialog.dialog-client-download .k-content .ov-more { 
+    font-size: 11px; color: rgba(255,255,255,0.75); font-weight: 500; 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;  
+    -webkit-box-orient: vertical;
+}
+
+/* ===== Sub View ===== */
+.artDialog.dialog-client-download .k-content .sub-view { display: none; animation: fadeIn 0.28s cubic-bezier(0.4,0,0.2,1); }
+.artDialog.dialog-client-download .k-content .sub-view.active { display: block; }
+.artDialog.dialog-client-download .k-content .sub-header { 
+    display: flex; align-items: center; gap: 12px; 
+    /* margin-bottom: 20px;  */
+}
+.artDialog.dialog-client-download .k-content .sub-back {
+    background: none; border: none; color: var(--x-primary); font-size: 14px; font-weight: 500;
+    cursor: pointer; padding: 4px 0; display: flex; align-items: center; gap: 4px; transition: opacity 0.2s;
+}
+.artDialog.dialog-client-download .k-content .sub-back:hover { opacity: 0.7; }
+.artDialog.dialog-client-download .k-content .sub-icon {
+    width: 52px; height: 52px; border-radius: 15px;
+    background: linear-gradient(145deg, #f8f9fc, #eef0f5);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;
+
+    margin-top: -40px;
+    width: 46px; height: 46px;
+}
+.artDialog.dialog-client-download .k-content .sub-icon .ic { width: 30px; height: 30px; }
+.artDialog.dialog-client-download .k-content .sub-list { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto; }
+.artDialog.dialog-client-download:not(.dialog-max) .k-content .sub-list { 
+    max-height: 220px; overflow-y: auto;
+}
+.artDialog.dialog-client-download .k-content .sub-ver-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; 
+    /* background: var(--x-card);  */
+    border-radius: 12px;
+    border: 1px solid var(--x-border); 
+    /* cursor: pointer;  */
+    transition: all 0.2s;
+}
+.artDialog.dialog-client-download .k-content .sub-ver-item:hover { 
+    border-color: var(--x-primary); 
+    box-shadow: 0 4px 16px rgba(79,110,247,0.1); 
+    /* transform: translateX(3px);  */
+}
+.artDialog.dialog-client-download .k-content .sub-ver-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.artDialog.dialog-client-download .k-content .sub-ver-name { 
+    font-size: 14px; font-weight: 500; 
+    /* color: var(--x-text);  */
+}
+.artDialog.dialog-client-download .k-content .sub-ver-detail { 
+    font-size: 12px; color: var(--x-text3); 
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;  
+    -webkit-box-orient: vertical;
+}
+.artDialog.dialog-client-download .k-content .sub-ver-dl {
+    display: flex; align-items: center; gap: 5px; padding: 7px 14px;
+    background: var(--x-primary); color: #fff; border: none; border-radius: 8px;
+    font-size: 12px; font-weight: 500; cursor: pointer; flex-shrink: 0; transition: background 0.2s;
+}
+.artDialog.dialog-client-download .k-content .sub-ver-dl:hover { background: var(--x-primary-dark); }
+
+/* ===== Mobile ===== */
+/* @media (max-width:768px) { */
+    .artDialog.dialog-client-download .k-content .header-inner { padding: 40px 20px 36px; }
+    .artDialog.dialog-client-download .k-content .main { padding: 28px 12px 40px; }
+    .artDialog.dialog-client-download .k-content .grid { gap:12px; }
+    .artDialog.dialog-client-download .k-content .item { flex-basis:104px; width:104px; padding:16px 6px 14px; min-height:112px; }
+    .artDialog.dialog-client-download .k-content .icon-frame { width:50px; height:50px; border-radius:14px; margin-bottom:9px; }
+    /* .artDialog.dialog-client-download .k-content .icon-frame .ic { width:28px; height:28px; } */
+    .artDialog.dialog-client-download .k-content .item-name { font-size:12px; }
+    .artDialog.dialog-client-download .k-content .overlay { padding:8px 6px; gap:4px; }
+    .artDialog.dialog-client-download .k-content .ov-dl { width:34px; height:34px; }
+    .artDialog.dialog-client-download .k-content .ov-ver { font-size:10px; }
+    /* .artDialog.dialog-client-download .k-content .ov-sys { font-size:9px; } */
+    .artDialog.dialog-client-download .k-content .ov-count { font-size: 17px; }
+    /* .artDialog.dialog-client-download .k-content .ov-more { font-size: 10px; } */
+    .artDialog.dialog-client-download .k-content .sub-list { max-width: 100%; }
+    .artDialog.dialog-client-download .k-content .sub-ver-item { padding: 12px 12px; }
+    .artDialog.dialog-client-download .k-content .tabs { margin-bottom: 24px; }
+    .artDialog.dialog-client-download .k-content .tab { padding: 10px 12px; font-size: 13px; }
+/* } */
+@media (max-width:400px) {
+    .artDialog.dialog-client-download .k-content .grid { gap:8px; }
+    .artDialog.dialog-client-download .k-content .item { flex-basis:92px; width:92px; }
+}
+
+
+/* 二维码弹窗 */
+.artDialog.client-down-qrdialog:not(.dialog-max) {
+  /* position: fixed; */
+  /* left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%); */
+}
+.artDialog.client-down-qrdialog .aui-main {
+    padding: 10px 45px 20px !important;
+}
+.artDialog.client-down-qrdialog .aui-content a {
+    pointer-events: none;
+}
+.artDialog.client-down-qrdialog .qrcode-box, 
+.artDialog.client-down-qrdialog .aui-footer .aui-buttons {
+    text-align: center;
+}
+.artDialog.client-down-qrdialog .qrcode-box>div:nth-child(2) {
+    width: 180px;
+    height: 180px;
+    margin: 0px auto;
+}
+.artDialog.client-down-qrdialog .qrcode-box .icon .font-icon{
+    /* font-size: 24px; */
+    font-size: 20px;
+    background: #eee;
+    padding: 5px;
+    border-radius: 10px;
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+}
+.artDialog.client-down-qrdialog .qrcode-box .icon .font-icon.android {
+    color: #a4c639;
+}
+.artDialog.client-down-qrdialog .qrcode-box .name {
+    font-size: 16px;
+    margin-top: 5px;
+    font-weight: 600;
+}
+.artDialog.client-down-qrdialog .qrcode-box .desc {
+    font-size: 12px;
+    color: #747474;
+}
+.artDialog.client-down-qrdialog .qrcode-box img {
+    width: 180px;
+}
+
+
+.dark-mode .artDialog.dialog-client-download .k-content .tabs {
+    background: rgba(0, 0, 0, 0.2);
+}
+.dark-mode .artDialog.dialog-client-download .k-content .icon-frame, 
+.dark-mode .artDialog.dialog-client-download .k-content .sub-icon {
+    /* background: rgba(0, 0, 0, 0.2); */
+    background: #383b3e;
+    box-shadow: none;
+}
+.dark-mode .artDialog.dialog-client-download .k-content .tabs .tab.active {
+    /* background: rgba(0, 0, 0, 0.1); */
+    background: #383b3e;
+}
+.dark-mode .artDialog.dialog-client-download .k-content .sub-ver-item {
+    border-color: #4e5154;
+}

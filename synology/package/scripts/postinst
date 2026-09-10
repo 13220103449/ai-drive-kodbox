@@ -1,0 +1,16 @@
+#!/bin/sh
+WEB_ROOT="/var/services/web_packages/aidrive"
+VAR_ROOT="${SYNOPKG_PKGVAR:-/var/packages/aidrive/var}"
+DATA_ROOT="$VAR_ROOT/data"
+
+mkdir -p "$DATA_ROOT"
+chown -R aidrive:http "$DATA_ROOT"
+chmod 0750 "$DATA_ROOT"
+
+if [ -e "$WEB_ROOT/data" ] && [ ! -L "$WEB_ROOT/data" ]; then
+    cp -a "$WEB_ROOT/data/." "$DATA_ROOT/" 2>/dev/null || true
+    rm -rf "$WEB_ROOT/data"
+fi
+ln -sfn "$DATA_ROOT" "$WEB_ROOT/data"
+chown -R aidrive:http "$WEB_ROOT"
+exit 0

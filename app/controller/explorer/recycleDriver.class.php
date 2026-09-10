@@ -1,0 +1,212 @@
+<?php
+
+
+/**
+ * 物理文件夹删除;
+ * 回收站支持处理;
+ */
+class explorerRecycleDriver extends Controller{
+	public function __construct(){
+		parent::__construct();
+	}
+	public function removeCheck($path,$toRecycle=true){
+		$path 		= KodIO::clear($path);
+		$pathParse  = KodIO::parse($path);
+		$driver 	= IO::init($path);
+		if(!$toRecycle || $pathParse['type'] == KodIO::KOD_SOURCE){
+			return IO::remove($path,$toRecycle);
+		}
+		$recycleLocal = rtrim(DATA_PATH,'/').'/'.$this->localRecycleFolder().'/';
+		$recyclePath  = rtrim($pathParse['pathBase'],'/').'/.recycle/';
+		if(!$pathParse['type']){$recyclePath = $recycleLocal;}
+		
+		// 协作分享内容: 某人删除时, 移动到自己的回收站(物理路径及io路径; db路径处理)
+		if($pathParse['type'] == KodIO::KOD_SHARE_ITEM && $driver->getType() == 'dbshareitem'){
+			$recyclePath  = rtrim($driver->getPathRoot(),'/').'/.recycle/';
+		}
+		return $this->moveToRecycle($path,$recyclePath,IO::pathFather($path));
+	}
+	
+	/**
+	 * 追加物理路径
+	 */
+	public function appendList(&$data,$pathParse){
+		if($pathParse['type'] != KodIO::KOD_USER_RECYCLE) return;
+		$list = $this->listData();
+		$listNew = $list;
+		foreach ($list as $toPath => $fromPath){
+			$parse = KodIO::parse($toPath);
+			if($parse['driverType'] == 'io') {
+				$info = Model('Storage')->driverInfo($parse['id']);
+				if(!$info) {
+					unset($listNew[$toPath]);
+					continue;
+				}
+			}
+			$ioType = IO::getType($toPath);
+			$allowInfo = $ioType == 'local' || $ioType == 'dbshareitem'; // 仅允许本地存储属性访问; 访问速度优化处理;
+			if(!$allowInfo){
+				$name = get_path_this($toPath);
+				$info = array(
+					'path' => rtrim($fromPath,'/').'/'.$name,
+					'name' => $name,
+					'type' => preg_match("/.+\.[a-zA-Z0-9]{1,6}$/",$name,$match) ? 'file' : 'folder',
+					'size' => '-1',
+				);
+				if($info['type'] == 'folder'){
+					$data['folderList'][] = $info;
+				}else{
+					$data['fileList'][] = $info;
+				}
+				continue;
+			}
+			
+			// $pathParse['type'];local;miniIO;  info; 网络存储则不获取属性;			
+			$info = IO::info($toPath);
+			if(!$info){
+				unset($listNew[$toPath]);
+				continue;
+			}
+			
+			// 协作分享,删除到回收站的内容; 有权限时数据会重复/去重处理;
+			if($info['sourceID']){
+				foreach($data['fileList'] as $i=>$item) {
+					if($info['sourceID'] == $item['sourceID']){unset($data['fileList'][$i]);}
+				}
+				foreach($data['folderList'] as $index=>$item) {
+					if($info['sourceID'] == $item['sourceID']){unset($data['folderList'][$i]);}
+				}
+			}
+			
+			$info['path'] = rtrim($fromPath,'/').'/'.$info['name'];
+			if($parse['type'] == KodIO::KOD_SHARE_ITEM){$info['path'] = $toPath;}
+			if($info['type'] == 'folder'){
+				$data['folderList'][] = $info;
+			}else{
+				$data['fileList'][] = $info;
+			}
+		}
+		
+		// 有不存在内容则自动清除;
+		if(count($listNew) != count($list)){
+			$this->resetList($listNew);
+		}
+		$data['folderList'] = array_values($data['folderList']);
+		$data['fileList']   = array_values($data['fileList']);
+		// pr($data);exit;
+	}
+	
+	// 彻底删除;
+	public function remove($pathArr){
+		$list = $this->listData();
+		$listNew = $list;
+		foreach ($list as $toPath => $fromPath){
+			// 删除所有, 或者当前在待删除列表中则删除该项;
+			$beforePath = rtrim($fromPath,'/').'/'.get_path_this($toPath);
+			if(!$pathArr || 
+				in_array($beforePath,$pathArr) || 
+				in_array(trim($beforePath,'/').'/',$pathArr) || 
+				$this->isSameShare($toPath,$fromPath,$pathArr)
+			){
+				IO::remove($toPath,false);
+				unset($listNew[$toPath]);
+			}
+		}
+		if(count($listNew) != count($list)){
+			$this->resetList($listNew);
+		}
+	}
+	// 判断是否为同一个协作：协作中fromPath为上上级，项目中为平级，故不检查是否为父目录关系
+	private function isSameShare($toPath,$fromPath,$pathArr){
+		if (!in_array($toPath, $pathArr)) return false;
+		$sameShare = false;
+		$toParse = KodIO::parse($toPath);
+		if ($toParse['type'] == KodIO::KOD_SHARE_ITEM) {
+			$fromParse = KodIO::parse($fromPath);
+			if ($fromParse['type'] == KodIO::KOD_SHARE_ITEM && $toParse['id'] == $fromParse['id']) {
+				$sameShare = true;
+			}
+		}
+		return $sameShare;
+	}
+
+	// 还原
+	public function restore($pathArr){
+		$list = $this->listData();
+		$listNew = $list;$result  = array();
+		foreach($list as $thePath => $beforePath){
+			$result[] = IO::move($thePath,$beforePath,REPEAT_RENAME_FOLDER);
+			unset($listNew[$thePath]);
+		}
+		if(count($listNew) != count($list)){
+			$this->resetList($listNew);
+		}
+		return $result;
+	}
+	
+	/**
+	 * 删除到回收站;
+	 * 物理路径: 移动到 TEMP_PATH/.recycle/[user_id]
+	 * io路径  : 移动到该io/.recycle 下;
+	 */
+	private function moveToRecycle($path,$recyclePath,$beforePath){
+		if(substr($path,0,strlen($recyclePath)) == $recyclePath){
+			return IO::remove($path,false);//已经在回收站中,则不再处理;
+		}
+		
+		$destPath = IO::mkdir($recyclePath);
+		$destInfo = $destPath ? IO::info($destPath):false;
+		if(!$destInfo){return $path;} //新建失败则返回;
+		if(IO::isParentOf($destPath,$path)){return IO::remove($path,false);} // 已经在回收站中则直接删除;
+
+		$toPath = IO::move($path,$destPath,REPEAT_RENAME_FOLDER);
+		$list = $this->listData();
+		$list[$toPath] = $beforePath;
+		$this->resetList($list);
+		return $toPath;
+	}
+	private function listData(){
+		$this->localRecycleFolder();
+		$list = Model("UserOption")->get('recycleList','recycle');
+		return $list ? json_decode($list,true):array();
+	}
+	private function resetList($list){
+		$listData = json_encode($list);
+		// options表key=>value value最长长度限制;
+		if(strlen($listData) > 65536){
+			show_json(LNG('explorer.recycleClearForce'),false);
+		}
+		Model("UserOption")->set('recycleList',$listData,'recycle');
+	}
+	
+	// 物理路径回收站文件名处理(安全优化, 隐藏文件夹名,避免被遍历)
+	private function localRecycleFolder(){
+		// Model("SystemOption")->set('recycleFolder','');return '.recycle';//debug;
+		$recycleFolder = Model("SystemOption")->get('recycleFolder');
+		if($recycleFolder) return $recycleFolder;
+		
+		$recycleFolder = '.recycle_'.rand_string(8);
+		$recycleLocal  = DATA_PATH.$recycleFolder.'/';
+		
+		// =====1.35前版本兼容处理;====
+		$recycleBefore= DATA_PATH.'.recycle/';
+		$list = Model("UserOption")->get('recycleList','recycle');
+		$list = $list ? json_decode($list,true):array();
+		$listNew = array();
+		foreach ($list as $path => $beforeAt){
+			$newPath = $path;
+			if(substr($path,0,strlen($recycleBefore)) == $recycleBefore){
+				$newPath = $recycleLocal.substr($path,strlen($recycleBefore));
+			}
+			$listNew[$newPath] = $beforeAt;
+		}
+		Model("UserOption")->set('recycleList',json_encode($listNew),'recycle');
+		@rename($recycleBefore,get_path_father($recycleBefore).'/'.$recycleFolder);
+		// =====兼容end====
+
+		IO::mkdir($recycleLocal);
+		file_put_contents($recycleLocal.'index.html','');
+		Model("SystemOption")->set('recycleFolder',$recycleFolder);
+		return $recycleFolder;
+	}
+}

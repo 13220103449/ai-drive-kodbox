@@ -1,0 +1,3 @@
+#!/bin/sh
+# Persistent data is managed by DSM under /var/packages/aidrive/var.
+exit 0

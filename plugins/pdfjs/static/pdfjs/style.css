@@ -1,0 +1,60 @@
+body{background: #eeeef4;}
+.pdfViewer .page{
+	border: none;
+	background: none;
+	/* box-shadow: 0 1px 10px rgba(0,0,0,0.1); */
+	box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+	margin: 10px auto;
+	border-radius: 2px;
+	overflow: hidden;
+}
+.pdfViewer.no-select * {
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+
+.exit-fullscreen{
+	position: fixed;top: 10px;right: 10px;z-index: 9999;opacity:0.3;
+    width: 50px;height: 50px;line-height: 50px;font-weight: 800;
+    cursor: pointer;border-radius: 4px;display:none;
+    background:rgba(150,150,150,0.5);color: #fff;
+    text-align:center;transition: all 0.2s;
+}
+.exit-fullscreen:hover{opacity: 0.8;cursor: pointer;}
+.pdfPresentationMode .exit-fullscreen{display:block;}
+
+
+.toolbarButton,.toggleButton.toolbarLabel,.toolbarButton.labeled{cursor: pointer;}
+.toolbarButton.labeled{font-size:13px;}
+.toolbarField{padding: 3px 6px;font-size: 13px !important;}
+.dropdownToolbarButton > select{height: 26px;border-radius: 3px;}
+.toolbarButtonWithContainer .menuContainer{overflow-x:hidden;}
+.toolbarButtonWithContainer .menuContainer .toolbarButton{margin:0 4px;}
+
+:root{
+	--main-color:#555;
+	--button-hover-color:#99999920;
+	--doorhanger-hover-color:#444;
+	--toggled-btn-bg-color:#99999940;
+	--toggled-btn-color:#333;
+	
+	--toolbar-bg-color:#fcfdfe;
+	--toolbar-border-color:#99999910;
+	--toolbar-box-shadow:none;
+	--toolbar-border-bottom:0.6px solid #00000030;
+	--dropdown-btn-bg-color:var(--button-hover-color);
+}
+#viewerContainer #errorMessage {
+	background: none repeat scroll 0 0 rgba(255, 85, 85, 1);
+    color: rgba(255, 255, 255, 1);
+    left: 0;
+    position: absolute;
+    right: 0;
+    z-index: 1000;
+    padding: 3px;
+    font-size: 0.8em;
+    text-align: center;
+    top: 5px;
+}

@@ -1,0 +1,46 @@
+{
+  "webservice": {
+    "services": [{
+      "service": "aidrive",
+      "display_name": "AI Drive",
+      "support_alias": true,
+      "support_server": true,
+      "type": "nginx_php",
+      "root": "aidrive",
+      "php": {
+        "profile_name": "AI Drive PHP 8.2",
+        "profile_desc": "PHP profile managed by the AI Drive package",
+        "backend": 11,
+        "open_basedir": "/var/services/web_packages/aidrive:/var/packages/aidrive/var:/tmp:/var/services/tmp",
+        "extensions": ["curl", "gd", "iconv", "mbstring", "openssl", "fileinfo", "sqlite3", "pdo_sqlite", "zip"],
+        "php_settings": {
+          "memory_limit": "512M",
+          "upload_max_filesize": "10G",
+          "post_max_size": "10G",
+          "max_execution_time": "3600",
+          "max_input_time": "3600",
+          "log_errors": "true"
+        },
+        "user": "aidrive",
+        "group": "http"
+      },
+      "connect_timeout": 60,
+      "read_timeout": 3600,
+      "send_timeout": 3600
+    }],
+    "portals": [{
+      "service": "aidrive",
+      "name": "aidrive",
+      "display_name": "AI Drive",
+      "type": "alias",
+      "alias": "aidrive"
+    }],
+    "pkg_dir_prepare": [{
+      "source": "/var/packages/aidrive/target/web",
+      "target": "aidrive",
+      "mode": "0755",
+      "user": "aidrive",
+      "group": "http"
+    }]
+  }
+}

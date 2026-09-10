@@ -1,0 +1,26 @@
+.user-login-tfa-dg .form-row {
+    margin: 5px 0px !important;
+}
+.user-login-tfa-dg .no-input .setting-content input {
+    pointer-events: none;
+    border: none !important;
+}
+.user-login-tfa-dg .no-input .setting-content .input-clear {
+    display: none !important;
+}
+.user-login-tfa-dg .input-title-right {
+    cursor: pointer;
+    width: 66px;
+    text-align: center;
+}
+.user-login-tfa-dg .input-title-right:hover {
+    background: #eee !important;
+}
+
+.user-login-tfa-dg .item-totp .desc {
+    color: #444 !important;
+    font-size: inherit !important;
+}
+.user-login-tfa-dg .item-totp .desc .qrcode-box {
+    text-align: center;
+}
