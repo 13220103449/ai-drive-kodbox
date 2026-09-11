@@ -1,6 +1,6 @@
 param(
-    [string]$Version = "0.3.4",
-    [string]$Build = "0005",
+    [string]$Version = "0.3.5",
+    [string]$Build = "0006",
     [string]$Python = "python"
 )
 
@@ -37,6 +37,26 @@ try {
     }
     $dataPath = Join-Path $payload "web\data"
     if (Test-Path $dataPath) { Remove-Item -LiteralPath $dataPath -Recurse -Force }
+
+    # Fail the release instead of shipping a page that only renders HTML but
+    # cannot start its JavaScript runtime. These directories contain generic
+    # names such as dist/data and were previously caught by broad archive rules.
+    $requiredPayloadFiles = @(
+        "static\app\dist\vendor.js",
+        "static\app\dist\api.js",
+        "static\app\dist\main.js",
+        "app\sdks\archiveLib\bin\data.bin",
+        "plugins\aiDrive\lib\data\cacert.pem"
+    )
+    foreach ($requiredFile in $requiredPayloadFiles) {
+        $requiredPath = Join-Path (Join-Path $payload "web") $requiredFile
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "Required release file is missing: $requiredFile"
+        }
+        if ((Get-Item -LiteralPath $requiredPath).Length -eq 0) {
+            throw "Required release file is empty: $requiredFile"
+        }
+    }
 
     $info = Get-Content (Join-Path $repoRoot "synology\package\INFO") -Raw -Encoding UTF8
     $info = $info -replace 'version="[^"]+"', ('version="' + $Version + '-' + $Build + '"')
