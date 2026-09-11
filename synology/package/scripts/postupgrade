@@ -1,2 +1,14 @@
 #!/bin/sh
+WEB_ROOT="/var/services/web_packages/aidrive"
+PKG_ROOT="${SYNOPKG_PKGDEST:-/var/packages/aidrive/target}"
+SOURCE_ROOT="$PKG_ROOT/web"
+
+# DSM Web Station may retain the existing pkg_dir_prepare target during an
+# in-place SPK upgrade. Synchronize the new package payload explicitly so the
+# Package Center version and the served application can never drift apart.
+if [ -d "$SOURCE_ROOT" ]; then
+    mkdir -p "$WEB_ROOT"
+    cp -a "$SOURCE_ROOT/." "$WEB_ROOT/"
+fi
+
 exec "$(dirname "$0")/postinst"
