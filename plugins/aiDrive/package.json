@@ -2,7 +2,7 @@
 	"id":"aiDrive",
 	"name":"AI Drive",
 	"title":"Human + Agent unified file access",
-	"version":"0.3.2",
+	"version":"0.3.3",
 	"source":{
 		"className":"font-icon ri-robot-2-fill bg-blue-6",
 		"icon":""
