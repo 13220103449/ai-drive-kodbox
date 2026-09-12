@@ -65,8 +65,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/ai-drive-kodbox:synology-amd64
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/ai-drive-kodbox:synology-amd64,push=true,oci-mediatypes=false
           provenance: false
           sbom: false
           cache-from: type=gha
