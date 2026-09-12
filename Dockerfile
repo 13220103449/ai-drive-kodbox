@@ -31,6 +31,8 @@ COPY --chown=www-data:www-data . /var/www/html/
 COPY docker/entrypoint.sh /usr/local/bin/ai-drive-entrypoint
 RUN chmod 0755 /usr/local/bin/ai-drive-entrypoint \
     && rm -rf /var/www/html/data/* \
+    && chown www-data:www-data /var/www/html \
+    && chmod 0755 /var/www/html \
     && install -d -o www-data -g www-data -m 0770 \
         /var/www/html/data \
         /var/www/html/data/system \

@@ -3,6 +3,13 @@ set -eu
 
 data_dir=/var/www/html/data
 
+# Debian's Apache package creates /var/www/html before the application is
+# copied into the image. COPY --chown updates the copied children, but not
+# that pre-existing directory itself. KodBox checks BASIC_PATH explicitly
+# during installation, so ensure Apache can write the application root too.
+chown www-data:www-data /var/www/html
+chmod 0755 /var/www/html
+
 install -d -o www-data -g www-data -m 0770 \
     "$data_dir" \
     "$data_dir/system" \
