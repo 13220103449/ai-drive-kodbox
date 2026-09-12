@@ -11,7 +11,7 @@ Build from a clean committed tree on Windows with Python 3 installed:
 powershell -ExecutionPolicy Bypass -File .\release\build-release.ps1
 ```
 
-Then install `dist/AI-Drive-0.3.6-0007-noarch.spk` from Package Center → Manual Install. The package registers a dedicated Web Station portal on port `8091`; open it at `http://NAS_ADDRESS:8091/`.
+Then install `dist/AI-Drive-0.4.0-0008-noarch.spk` from Package Center → Manual Install. The package registers a dedicated Web Station portal on port `8091`; open it at `http://NAS_ADDRESS:8091/`.
 
 Port 80 is not required. DSM checks whether port 8091 is available during installation. If an existing service already occupies 8091, free that port before installing the package.
 

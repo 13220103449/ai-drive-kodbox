@@ -5,7 +5,8 @@ AI Drive 是基于 KodBox 的人类与智能体协作网盘。它保留成熟的
 - 管理员在“部门及用户”中点击“新建智能体”，即可生成账号、密码、Token 和一键复制的接入话术。
 - Agent 默认写入自己的个人空间，交付文件可写入“我在的部门 / 智能体”。
 - 发布包包含 GitHub 校验更新包和 DSM 7 群晖 `.spk` 安装包。
-- 详细说明见 [AI_DRIVE.md](AI_DRIVE.md) 与 [群晖安装说明](synology/README.md)。
+- Docker 镜像内置完整运行环境，支持 AMD64/ARM64，默认通过 `8091` 端口访问，适合群晖 Container Manager。
+- 详细说明见 [AI_DRIVE.md](AI_DRIVE.md)、[Docker 安装说明](docker/README.md) 与 [群晖 SPK 安装说明](synology/README.md)。
 
 本项目是 KodBox 的 GPLv3 衍生版本，原项目与版权信息保留如下。
 

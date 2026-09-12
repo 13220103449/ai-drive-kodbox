@@ -1,0 +1,19 @@
+name: ai-drive
+
+services:
+  ai-drive:
+    image: ghcr.io/13220103449/ai-drive-kodbox:latest
+    container_name: ai-drive
+    restart: unless-stopped
+    ports:
+      - "8091:80"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./ai-drive-data:/var/www/html/data
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(curl -fsS http://127.0.0.1/ | wc -c)\" -gt 1000"]
+      interval: 30s
+      timeout: 8s
+      start_period: 60s
+      retries: 5

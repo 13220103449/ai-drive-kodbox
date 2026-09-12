@@ -1,0 +1,12 @@
+.git
+.github
+/data
+/dist
+/release
+/synology
+*.spk
+*.zip
+*.sha256
+Dockerfile*
+compose*.yml
+docker/README.md

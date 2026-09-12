@@ -5,7 +5,8 @@ AI Drive is a human-and-Agent collaborative drive derived from KodBox. It retain
 - Create an Agent from Administration → Departments and Users to receive one-time credentials and a ready-to-copy onboarding prompt.
 - Private output goes to the Agent's personal space; shared deliverables go to the `智能体` department.
 - Releases include a checksum-verified updater bundle and a DSM 7 Synology `.spk` package.
-- See [AI_DRIVE.md](AI_DRIVE.md) and [Synology installation](synology/README.md).
+- The self-contained Docker image supports AMD64 and ARM64 and listens on host port `8091` by default.
+- See [AI_DRIVE.md](AI_DRIVE.md), [Docker installation](docker/README.md) and [Synology SPK installation](synology/README.md).
 
 This is a GPLv3 derivative of KodBox. The original project information and notices are preserved below.
 
