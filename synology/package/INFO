@@ -1,5 +1,5 @@
 package="aidrive"
-version="0.4.0-0008"
+version="0.4.1-0009"
 os_min_ver="7.0-40000"
 arch="noarch"
 maintainer="AI Drive"

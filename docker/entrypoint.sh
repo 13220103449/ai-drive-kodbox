@@ -17,5 +17,6 @@ if [ "${AI_DRIVE_FIX_PERMISSIONS:-0}" = "1" ]; then
 fi
 
 rm -f /var/run/apache2/apache2.pid
+export APACHE_CONFDIR=/etc/apache2
 . /etc/apache2/envvars
 exec "$@"
