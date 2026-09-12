@@ -56,3 +56,34 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Start container and verify the real application page
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            image_tag="${GITHUB_REF_NAME#v}"
+          else
+            image_tag="edge"
+          fi
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/ai-drive-kodbox:${image_tag}"
+          docker run -d --name ai-drive-smoke -p 127.0.0.1:18091:80 "$image"
+          trap 'docker logs ai-drive-smoke || true; docker rm -f ai-drive-smoke >/dev/null 2>&1 || true' EXIT
+          docker exec ai-drive-smoke php -r '
+            foreach (["curl", "gd", "mbstring", "mysqli", "pdo_sqlite", "xml", "zip", "zlib"] as $extension) {
+                if (!extension_loaded($extension)) {
+                    fwrite(STDERR, "Missing PHP extension: $extension\n");
+                    exit(1);
+                }
+            }
+          '
+          for attempt in {1..30}; do
+            page_size="$(curl -fsS http://127.0.0.1:18091/ 2>/dev/null | wc -c || true)"
+            if [[ "${page_size:-0}" -gt 1000 ]]; then
+              echo "AI Drive returned a valid application page (${page_size} bytes)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "AI Drive did not return a valid page in time." >&2
+          exit 1
