@@ -16,4 +16,6 @@ if [ "${AI_DRIVE_FIX_PERMISSIONS:-0}" = "1" ]; then
     chmod -R u+rwX,g+rwX,o-rwx "$data_dir"
 fi
 
-exec docker-php-entrypoint "$@"
+rm -f /var/run/apache2/apache2.pid
+. /etc/apache2/envvars
+exec "$@"

@@ -1,35 +1,29 @@
-FROM php:8.2-apache-bookworm
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
+        apache2 \
         ca-certificates \
         curl \
-        libcurl4-openssl-dev \
-        libfreetype6-dev \
-        libjpeg62-turbo-dev \
-        libonig-dev \
-        libpng-dev \
-        libsqlite3-dev \
-        libxml2-dev \
-        libzip-dev \
+        libapache2-mod-php8.2 \
+        php8.2-cli \
+        php8.2-curl \
+        php8.2-gd \
+        php8.2-intl \
+        php8.2-mbstring \
+        php8.2-mysql \
+        php8.2-opcache \
+        php8.2-sqlite3 \
+        php8.2-xml \
+        php8.2-zip \
         unzip; \
-    docker-php-ext-configure gd --with-freetype --with-jpeg; \
-    docker-php-ext-install -j"$(nproc)" \
-        curl \
-        exif \
-        gd \
-        mbstring \
-        mysqli \
-        opcache \
-        pdo_mysql \
-        pdo_sqlite \
-        xml \
-        zip; \
     a2enmod expires headers rewrite; \
     rm -rf /var/lib/apt/lists/*
 
-COPY docker/php.ini /usr/local/etc/php/conf.d/ai-drive.ini
+COPY docker/php.ini /etc/php/8.2/apache2/conf.d/99-ai-drive.ini
 COPY docker/apache.conf /etc/apache2/conf-available/ai-drive.conf
 RUN a2enconf ai-drive
 
@@ -44,9 +38,10 @@ RUN chmod 0755 /usr/local/bin/ai-drive-entrypoint \
 
 VOLUME ["/var/www/html/data"]
 EXPOSE 80
+STOPSIGNAL SIGWINCH
 
 HEALTHCHECK --interval=30s --timeout=8s --start-period=60s --retries=5 \
     CMD test "$(curl -fsS http://127.0.0.1/ | wc -c)" -gt 1000 || exit 1
 
 ENTRYPOINT ["ai-drive-entrypoint"]
-CMD ["apache2-foreground"]
+CMD ["apache2", "-DFOREGROUND"]
