@@ -57,6 +57,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Older Synology Docker engines can return "manifest unknown" for the
+      # OCI multi-platform index emitted by modern Buildx. Publish a direct,
+      # legacy-compatible AMD64 manifest under a separate stable tag.
+      - name: Publish Synology-compatible AMD64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/ai-drive-kodbox:synology-amd64
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+
       - name: Start container and verify the real application page
         shell: bash
         run: |
