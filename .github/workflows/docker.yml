@@ -44,6 +44,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=AI Drive
             org.opencontainers.image.description=Human and Agent collaborative file platform based on KodBox
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Build and publish AMD64 and ARM64 image
         uses: docker/build-push-action@v6
