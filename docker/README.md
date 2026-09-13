@@ -10,7 +10,7 @@ Docker 版已内置 Apache、PHP 8.2、zlib、GD、SQLite、MySQL 驱动和 AI D
 4. 启动项目，等待容器状态变为“正常”。
 5. 访问 `http://群晖IP:8091/`，按页面向导安装。个人和小团队可直接选 SQLite。
 
-所有数据库、配置和网盘文件都保存在同目录的 `ai-drive-data` 中。删除或升级容器不会删除这个目录。不要把 `ai-drive-data` 放到临时目录。
+所有数据库、配置和网盘文件都保存在同目录的 `ai-drive-data` 中。安装完成后，容器会自动将 KodBox 数据库配置备份到 `ai-drive-data/system/setting_user.php`，更新或更换镜像时自动恢复。删除或升级容器不会删除这个目录。不要把 `ai-drive-data` 放到临时目录。
 
 若 `8091` 已被占用，只修改左边的端口，例如 `8092:80`，随后访问 `http://群晖IP:8092/`。
 
