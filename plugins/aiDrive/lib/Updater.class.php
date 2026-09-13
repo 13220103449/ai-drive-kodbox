@@ -29,13 +29,18 @@ class AiDriveUpdater {
 			$this->download($assets['zip']['browser_download_url'],$zipFile);$checksum=trim($this->request($assets['checksum']['browser_download_url']));
 			if(!preg_match('/\b([a-f0-9]{64})\b/i',$checksum,$match)) throw new Exception('Release checksum file is invalid');
 			$actual=hash_file('sha256',$zipFile);if(!hash_equals(strtolower($match[1]),strtolower($actual))) throw new Exception('Update package SHA-256 verification failed');
-			$stage=$work.'stage/';mk_dir($stage);$this->extractPlugin($zipFile,$stage);
+			$stage=$work.'stage/';mk_dir($stage);$this->extractPackage($zipFile,$stage);
 			$package=$stage.'plugins/aiDrive/package.json';if(!is_file($package)) throw new Exception('Update package does not contain AI Drive plugin');
 			$meta=json_decode(file_get_contents($package),true);if(strval(_get($meta,'version',''))!==$latest) throw new Exception('Release tag and package version do not match');
 			$target=PLUGIN_DIR.'aiDrive/';if(!path_writeable($target)) throw new Exception('AI Drive plugin directory is not writable');
 			$backup=DATA_PATH.'update-backup/aiDrive-'.$current.'-'.date('YmdHis').'/';mk_dir($backup);
 			if(!$this->copyTree($target,$backup)) throw new Exception('Cannot create update backup');
 			try{$this->copyTree($stage.'plugins/aiDrive/',$target,true);}catch(Exception $error){$this->copyTree($backup,$target,true);throw $error;}
+			$webdavPatch=$stage.'plugins/webdav/php/webdavServerKod.class.php';
+			if(is_file($webdavPatch)){
+				$webdavTarget=PLUGIN_DIR.'webdav/php/webdavServerKod.class.php';
+				if(!is_file($webdavTarget) || !is_writable($webdavTarget) || !@copy($webdavPatch,$webdavTarget)) throw new Exception('Cannot install approved WebDAV compatibility patch');
+			}
 			$installed=$this->currentVersion();if($installed!==$latest){$this->copyTree($backup,$target,true);throw new Exception('Installed version verification failed; backup restored');}
 			return array('updated'=>true,'version'=>$installed,'previousVersion'=>$current,'backup'=>str_replace(BASIC_PATH,'',$backup));
 		}finally{if(is_dir($work)) del_dir(rtrim($work,'/'));flock($lock,LOCK_UN);fclose($lock);}
@@ -69,11 +74,12 @@ class AiDriveUpdater {
 		$configured=ini_get('curl.cainfo');if($configured && is_file($configured))return $configured;
 		throw new Exception('No trusted CA certificate bundle is available');
 	}
-	private function extractPlugin($file,$stage){
+	private function extractPackage($file,$stage){
 		$zip=new ZipArchive();if($zip->open($file)!==true) throw new Exception('Cannot open update package');
 		for($i=0;$i<$zip->numFiles;$i++){
 			$rawName=$zip->getNameIndex($i);$name=str_replace('\\','/',$rawName);if($name===''||substr($name,-1)==='/')continue;
-			if(strpos($name,"\0")!==false || substr($name,0,1)==='/' || preg_match('#(^|/)\.\.(/|$)#',$name) || strpos($name,'plugins/aiDrive/')!==0){$zip->close();throw new Exception('Update package contains an unsafe path');}
+			$allowed=strpos($name,'plugins/aiDrive/')===0 || $name==='plugins/webdav/php/webdavServerKod.class.php';
+			if(strpos($name,"\0")!==false || substr($name,0,1)==='/' || preg_match('#(^|/)\.\.(/|$)#',$name) || !$allowed){$zip->close();throw new Exception('Update package contains an unsafe path');}
 			$dest=$stage.$name;mk_dir(dirname($dest));$in=$zip->getStream($rawName);$out=fopen($dest,'wb');if(!$in||!$out){$zip->close();throw new Exception('Cannot extract update package');}stream_copy_to_stream($in,$out);fclose($in);fclose($out);
 		}$zip->close();
 	}
