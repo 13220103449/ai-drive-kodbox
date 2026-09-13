@@ -13,11 +13,11 @@ class aiDrivePlugin extends PluginBase {
 			'{{updateInstallApi}}'=>$this->pluginApi.'updateInstall'
 		));
 	}
-	public function onChangeStatus($status){if($status){$this->store()->initTable();$this->store()->ensureAgentDepartment();}}
-	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();return $config;}
+	public function onChangeStatus($status){if($status){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();}}
+	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.3.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.3','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -51,6 +51,11 @@ class aiDrivePlugin extends PluginBase {
 		$user=Model('User')->getInfoFull(intval($agent['userID']));
 		if(!$user || intval($user['status'])!==1){header('HTTP/1.1 403 Forbidden');show_json('Agent KodBox account is disabled',false);}
 		Session::set('kodUser',$user);KodUser::init($user['userID']);
+		// KodBox only loads optional storage drivers when their plugin route runs.
+		// Agent API requests bypass that route, so load the WebDAV/NFS/Samba drivers
+		// explicitly before IO resolves a user's configured storage backend.
+		$this->loadOptionalStorageDrivers();
+		$webdav=$this->store()->enableWebdav();
 		$body=$this->jsonBody();$action=strtolower(_get($body,'action',_get($this->in,'action','capabilities')));
 		$space=strtolower(_get($body,'space',_get($this->in,'space','personal')));$rootSourceID=$user['sourceInfo']['sourceID'];
 		if($space==='department' || $space==='智能体'){
@@ -66,12 +71,18 @@ class aiDrivePlugin extends PluginBase {
 				'username'=>$user['name'],'nickName'=>$user['nickName'],'home'=>'/','space'=>$space,
 			'quota'=>array('used'=>intval($user['sizeUse']),'max'=>intval($user['sizeMax'])),'permissions'=>array('*')
 		));
-		if($action==='capabilities') return $this->success($agent,$action,array(
-				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>true,'spaces'=>array('personal','department'),
+		if($action==='capabilities'){return $this->success($agent,$action,array(
+				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
 			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','mkdir','rename','move','copy','delete','share')
-		));
+		));}
 
-		$path=$this->agentPath($root,_get($body,'path',_get($this->in,'path','')));
+		$relativeInput=_get($body,'path',_get($this->in,'path',''));
+		if($action==='write'){
+			$parent=_get($body,'parentPath',_get($this->in,'parentPath',''));
+			$name=$this->safeName(_get($body,'name',_get($this->in,'name','')));
+			if($name && (!$relativeInput || substr($relativeInput,-1)==='/'))$relativeInput=rtrim($relativeInput?$relativeInput:$parent,'/').'/'.$name;
+		}
+		$path=$this->agentPath($root,$relativeInput);
 		if($action==='list'){
 			$info=IO::info($path);if(!$info || $info['type']!=='folder') return $this->failure($agent,$action,'folder not found',$path);
 			return $this->success($agent,$action,$this->listResult(IO::listPath($path),$root),$path);
@@ -96,15 +107,18 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,$this->relativePath($result,$root),$path);
 		}
 		if($action==='write'){
-			$content=_get($body,'content','');if(_get($body,'encoding','')==='base64') $content=base64_decode($content,true);
+			$content=$this->writeContent($body);
+			$encoding=strtolower(strval(_get($body,'encoding',_get($this->in,'encoding',''))));
+			if($encoding==='base64' || _get($body,'base64',false)) $content=base64_decode($content,true);
 			if($content===false) return $this->failure($agent,$action,'invalid base64 content',$path);
-			if(!IO::info($path)) return $this->failure($agent,$action,'file not found; use upload to create a new file',$path);
-			$result=IO::setContent($path,$content);
+			$before=IO::info($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
+			$result=$before?IO::setContent($path,$content):IO::mkfile($path,$content,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('write failed'),$path);
 			return $this->success($agent,$action,$this->fileInfo(IO::info($path),$root),$path);
 		}
 		if($action==='upload'){
 			$file=_get($_FILES,'file',array());if(!$file || !_get($file,'tmp_name')) return $this->failure($agent,$action,'multipart field "file" is required',$path);
+			if(intval(_get($file,'error',UPLOAD_ERR_OK))!==UPLOAD_ERR_OK) return $this->failure($agent,$action,'PHP upload error: '.intval($file['error']),$path);
 			$name=$this->safeName(_get($this->in,'name',_get($file,'name','upload.bin')));$folder=IO::info($path);
 			if(!$folder || $folder['type']!=='folder') return $this->failure($agent,$action,'destination folder not found',$path);
 			$target=rtrim($path,'/').'/'.$name;$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
@@ -176,6 +190,18 @@ class aiDrivePlugin extends PluginBase {
 		return '/'.implode('/',$names);
 	}
 	private function safeName($name){$name=trim(str_replace(array('\\','/',':','*','?','"','<','>','|',"\r","\n"),'_',strval($name)));return in_array($name,array('','.','..'))?'':$name;}
+	private function writeContent($body){
+		foreach(array('content','text','fileContent','data','body') as $key){if(array_key_exists($key,$body))return strval($body[$key]);}
+		if(isset($body['base64']) && is_string($body['base64']))return $body['base64'];
+		foreach(array('content','text','fileContent','data','body') as $key){if(isset($this->in[$key]))return strval($this->in[$key]);}
+		return '';
+	}
+	private function loadOptionalStorageDrivers(){
+		$base=PLUGIN_DIR.'webdav/php/';
+		foreach(array('webdavClient.class.php','pathDriverWebdav.class.php','pathDriverNFS.class.php','pathDriverSamba.class.php') as $file){
+			if(is_file($base.$file))include_once($base.$file);
+		}
+	}
 	private function store(){if($this->store)return $this->store;include_once($this->pluginPath.'lib/AgentStore.class.php');return $this->store=new AiDriveAgentStore($this);}
 	private function updater(){include_once($this->pluginPath.'lib/Updater.class.php');return new AiDriveUpdater($this);}
 	private function bearerToken(){$header=_get($_SERVER,'HTTP_AUTHORIZATION','');if(!$header&&function_exists('getallheaders')){$headers=getallheaders();$header=_get($headers,'Authorization','');}return preg_match('/^Bearer\s+(.+)$/i',$header,$m)?trim($m[1]):'';}

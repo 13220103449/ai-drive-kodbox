@@ -27,9 +27,11 @@ class AiDriveAgentStore {
 	}
 
 	public function enableWebdav(){
-		$config=Model('Plugin')->getConfig('webdav');$config['isOpen']='1';$config['pathAllow']='all';$config['webdavName']='aidrive';
-		Model('Plugin')->setConfig('webdav',$config);
-		return array('enabled'=>true,'url'=>APP_HOST.'index.php/plugin/webdav/aidrive/','authentication'=>'KodBox Agent username and password');
+		$config=(array)Model('Plugin')->getConfig('webdav');
+		$changed=_get($config,'isOpen','0')!=='1' || _get($config,'pathAllow','')!=='all' || _get($config,'webdavName','')!=='aidrive';
+		$config['isOpen']='1';$config['pathAllow']='all';$config['webdavName']='aidrive';
+		if($changed) Model('Plugin')->setConfig('webdav',$config);
+		return array('enabled'=>true,'url'=>APP_HOST.'index.php/plugin/webdav/aidrive/','authentication'=>'Basic (KodBox Agent username and password)');
 	}
 
 	public function listAgents(){
@@ -55,6 +57,7 @@ class AiDriveAgentStore {
 		if(_get($user,'sourceInfo.sourceID')) Action('admin.member')->folderDefault($user['sourceInfo']['sourceID']);
 		if(_get($user,'sourceInfo.desktop')) Action('admin.member')->lightAppDefault($user['sourceInfo']['desktop']);
 		$credential=$this->createAgent($name,$userID);$credential['username']=$username;$credential['password']=$password;
+		$this->enableWebdav();
 		$credential['passwordShownOnce']=$generated;$credential['department']=$department;
 		$credential['binding']=array(
 			'defaultSpace'=>'个人空间','sharedSpace'=>'我在的部门/智能体','webdavUrl'=>APP_HOST.'index.php/plugin/webdav/aidrive/',

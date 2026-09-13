@@ -26,7 +26,7 @@ AI Drive is now developed as an upgrade-friendly KodBox extension instead of a r
 - `POST /index.php/plugin/aiDrive/api` — `Authorization: Bearer aidv_...`
 - `POST /index.php/plugin/aiDrive/webdav` — root administrator; enables WebDAV access to the Agent's visible spaces
 
-File actions are `list`, `stat`, `read`, `download`, `write` (existing files), `upload`, `mkdir`, `rename`, `move`, `copy`, `delete` and `share`. Upload uses multipart field `file`. Paths are relative to `space: "personal"` (default) or the shared `space: "department"` for the 智能体 department.
+File actions are `list`, `stat`, `read`, `download`, `write`, `upload`, `mkdir`, `rename`, `move`, `copy`, `delete` and `share`. `write` creates a missing file or overwrites an existing file and accepts `content`, `text`, `fileContent`, `data` or `body`; set `encoding: "base64"` for binary data. Upload uses multipart field `file`. Paths are relative to `space: "personal"` (default) or the shared `space: "department"` for the 智能体 department.
 
 ## Connection choices
 
