@@ -17,7 +17,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.3','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.4','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -73,7 +73,13 @@ class aiDrivePlugin extends PluginBase {
 		));
 		if($action==='capabilities'){return $this->success($agent,$action,array(
 				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
-			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','mkdir','rename','move','copy','delete','share')
+			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','mkdir','rename','move','copy','delete','share'),
+			'parameters'=>array(
+				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
+				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
+				'rename'=>array('path'=>'existing source path','name'=>'new filename; aliases: newName, to, dest, destination'),
+				'webdav'=>array('personal'=>'/personal/','department'=>'/department/','method'=>'use PROPFIND for folders; collection GET is not a directory listing')
+			)
 		));}
 
 		$relativeInput=_get($body,'path',_get($this->in,'path',''));
@@ -111,7 +117,10 @@ class aiDrivePlugin extends PluginBase {
 			$encoding=strtolower(strval(_get($body,'encoding',_get($this->in,'encoding',''))));
 			if($encoding==='base64' || _get($body,'base64',false)) $content=base64_decode($content,true);
 			if($content===false) return $this->failure($agent,$action,'invalid base64 content',$path);
-			$before=IO::info($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
+			// IO::info() intentionally falls back to the nearest existing parent
+			// for a virtual child path. Use infoFull() here so a missing file is
+			// not mistaken for its parent folder.
+			$before=IO::infoFull($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
 			$result=$before?IO::setContent($path,$content):IO::mkfile($path,$content,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('write failed'),$path);
 			return $this->success($agent,$action,$this->fileInfo(IO::info($path),$root),$path);
@@ -126,7 +135,7 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,$this->fileInfo(IO::info($result),$root),$result);
 		}
 		if($action==='rename'){
-			$name=$this->safeName(_get($body,'name',''));if(!$name) return $this->failure($agent,$action,'name is required',$path);
+			$name=$this->renameName($body);if(!$name) return $this->failure($agent,$action,'name is required (accepted aliases: newName, to, dest, destination)',$path);
 			$result=IO::rename($path,$name);if(!$result) return $this->failure($agent,$action,IO::getLastError('rename failed'),$path);
 			return $this->success($agent,$action,$this->relativePath($result,$root),$path);
 		}
@@ -190,6 +199,13 @@ class aiDrivePlugin extends PluginBase {
 		return '/'.implode('/',$names);
 	}
 	private function safeName($name){$name=trim(str_replace(array('\\','/',':','*','?','"','<','>','|',"\r","\n"),'_',strval($name)));return in_array($name,array('','.','..'))?'':$name;}
+	private function renameName($body){
+		foreach(array('name','newName','to','dest','destination') as $key){
+			$value=_get($body,$key,_get($this->in,$key,''));if($value==='')continue;
+			$value=str_replace('\\','/',strval($value));return $this->safeName(basename(rtrim($value,'/')));
+		}
+		return '';
+	}
 	private function writeContent($body){
 		foreach(array('content','text','fileContent','data','body') as $key){if(array_key_exists($key,$body))return strval($body[$key]);}
 		if(isset($body['base64']) && is_string($body['base64']))return $body['base64'];

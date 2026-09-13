@@ -141,6 +141,19 @@ class webdavServerKod extends webdavServer {
 	// 如果挂载全部路径; 第一层路径自适应多语言处理;
 	private function rootPathAutoLang($rootList,&$pathArr){
 		$rootPathName = array_to_keyvalue($rootList['folderList'],'','name');
+		// Stable English aliases used by AI Drive agents. KodBox normally
+		// exposes localized names here (个人空间/我所在的部门), which makes a
+		// machine client dependent on the user's UI language.
+		$alias = strtolower(strval($pathArr[0]));
+		if($alias === 'personal'){
+			$pathArr[0] = LNG('explorer.toolbar.rootPath');return;
+		}
+		if($alias === 'department'){
+			foreach($rootList['folderList'] as $folder){
+				if(_get($folder,'name','') === '智能体'){$pathArr[0] = '智能体';return;}
+			}
+			$pathArr[0] = LNG('explorer.toolbar.myGroup');return;
+		}
 		if(in_array($pathArr[0],$rootPathName)) return;
 
 		$langKeys = $this->loadLangKeys();

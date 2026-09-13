@@ -1,6 +1,6 @@
 param(
-    [string]$Version = "0.4.3",
-    [string]$Build = "0010",
+    [string]$Version = "0.4.4",
+    [string]$Build = "0011",
     [string]$Python = "python"
 )
 
@@ -19,6 +19,8 @@ try {
 
     New-Item -ItemType Directory -Force -Path (Join-Path $updateStage "plugins") | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot "plugins\aiDrive") -Destination (Join-Path $updateStage "plugins\aiDrive") -Recurse
+    New-Item -ItemType Directory -Force -Path (Join-Path $updateStage "plugins\webdav\php") | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot "plugins\webdav\php\webdavServerKod.class.php") -Destination (Join-Path $updateStage "plugins\webdav\php\webdavServerKod.class.php")
     $updateZip = Join-Path $dist "ai-drive-update-v$Version.zip"
     if (Test-Path $updateZip) { Remove-Item -LiteralPath $updateZip -Force }
     Compress-Archive -Path (Join-Path $updateStage "plugins") -DestinationPath $updateZip -CompressionLevel Optimal
