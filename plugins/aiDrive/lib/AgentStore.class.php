@@ -27,11 +27,29 @@ class AiDriveAgentStore {
 	}
 
 	public function enableWebdav(){
+		$aliases=$this->installWebdavAliases();
 		$config=(array)Model('Plugin')->getConfig('webdav');
 		$changed=_get($config,'isOpen','0')!=='1' || _get($config,'pathAllow','')!=='all' || _get($config,'webdavName','')!=='aidrive';
 		$config['isOpen']='1';$config['pathAllow']='all';$config['webdavName']='aidrive';
 		if($changed) Model('Plugin')->setConfig('webdav',$config);
-		return array('enabled'=>true,'url'=>APP_HOST.'index.php/plugin/webdav/aidrive/','authentication'=>'Basic (KodBox Agent username and password)');
+		return array('enabled'=>true,'aliasesInstalled'=>$aliases,'url'=>APP_HOST.'index.php/plugin/webdav/aidrive/','authentication'=>'Basic (KodBox Agent username and password)');
+	}
+
+	/** Install stable machine-facing WebDAV aliases without replacing the plugin. */
+	private function installWebdavAliases(){
+		$target=PLUGIN_DIR.'webdav/php/webdavServerKod.class.php';if(!is_file($target))return false;
+		$current=file_get_contents($target);if(strpos($current,'AI Drive stable WebDAV aliases')!==false)return true;
+		$needle="\t\t\$rootPathName = array_to_keyvalue(\$rootList['folderList'],'','name');\n";
+		$patch="\t\t// AI Drive stable WebDAV aliases.\n".
+			"\t\t\$alias = strtolower(strval(\$pathArr[0]));\n".
+			"\t\tif(\$alias === 'personal'){\$pathArr[0] = LNG('explorer.toolbar.rootPath');return;}\n".
+			"\t\tif(\$alias === 'department'){\n".
+			"\t\t\tforeach(\$rootList['folderList'] as \$folder){if(_get(\$folder,'name','') === '智能体'){\$pathArr[0] = '智能体';return;}}\n".
+			"\t\t\t\$pathArr[0] = LNG('explorer.toolbar.myGroup');return;\n\t\t}\n";
+		if(strpos($current,$needle)===false)return false;$updated=str_replace($needle,$needle.$patch,$current,$count);if($count!==1)return false;
+		$temp=$target.'.aidrive-'.rand_string(6).'.tmp';if(file_put_contents($temp,$updated)===false)return false;
+		@chmod($temp,fileperms($target)&0777);if(!@rename($temp,$target)){@unlink($temp);return false;}
+		if(function_exists('opcache_invalidate'))@opcache_invalidate($target,true);return true;
 	}
 
 	public function listAgents(){
