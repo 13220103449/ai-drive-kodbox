@@ -1,0 +1,10 @@
+FROM ghcr.io/13220103449/ai-drive-kodbox:0.4.3
+
+# Synology already has the 0.4.3 application image.  Keep those layers and
+# ship only the files changed by the Agent/WebDAV fixes so upgrades do not
+# need to download the complete application again.
+COPY --chown=www-data:www-data plugins/aiDrive/ /var/www/html/plugins/aiDrive/
+COPY --chown=www-data:www-data plugins/webdav/php/webdavServerKod.class.php /var/www/html/plugins/webdav/php/webdavServerKod.class.php
+COPY docker/entrypoint.sh /usr/local/bin/ai-drive-entrypoint
+
+RUN chmod 0755 /usr/local/bin/ai-drive-entrypoint

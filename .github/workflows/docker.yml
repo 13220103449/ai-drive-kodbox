@@ -70,6 +70,20 @@ jobs:
           sbom: false
           cache-from: type=gha
 
+      # A small upgrade image for existing Synology installations.  It reuses
+      # the 0.4.3 layers already present on the NAS and only adds Agent/WebDAV
+      # changes, avoiding another full application download on slow links.
+      - name: Publish Synology incremental AMD64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.synology-overlay
+          platforms: linux/amd64
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/ai-drive-kodbox:synology-amd64-overlay,push=true,oci-mediatypes=false
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+
       - name: Start container and verify the real application page
         shell: bash
         run: |
