@@ -8,11 +8,11 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: "0.4.8"
+        default: "0.4.9"
       build:
         description: Synology package build number
         required: true
-        default: "0015"
+        default: "0016"
 
 permissions:
   contents: write
@@ -35,7 +35,7 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "push") {
             $version = "${{ github.ref_name }}".TrimStart("v")
-            $build = "0015"
+            $build = "0016"
           } else {
             $version = "${{ inputs.version }}"
             $build = "${{ inputs.build }}"

@@ -17,7 +17,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.8','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.9','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -77,6 +77,7 @@ class aiDrivePlugin extends PluginBase {
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
 				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
+				'mkdir'=>array('path'=>'folder path; every missing intermediate folder is created'),
 				'rename'=>array('path'=>'existing source path','name'=>'new filename; newName is equivalent; to/dest/destination also accept a complete target path'),
 				'move'=>array('path'=>'existing source path','to'=>'existing destination folder or complete target path; aliases: dest, destination'),
 				'copy'=>array('path'=>'existing source path','to'=>'existing destination folder or complete target path; aliases: dest, destination'),
@@ -90,29 +91,31 @@ class aiDrivePlugin extends PluginBase {
 			$name=$this->safeName(_get($body,'name',_get($this->in,'name','')));
 			if($name && (!$relativeInput || substr($relativeInput,-1)==='/'))$relativeInput=rtrim($relativeInput?$relativeInput:$parent,'/').'/'.$name;
 		}
+		if($action==='mkdir'){
+			$path=$this->ensureFolderPath($root,$relativeInput);
+			if(!$path) return $this->failure($agent,$action,IO::getLastError('mkdir failed'),$relativeInput);
+			return $this->success($agent,$action,$this->relativePath($path,$root),$path);
+		}
 		$path=$this->agentPath($root,$relativeInput);
+		if(!$path) return $this->notFound($agent,$action,'parent folder not found',$relativeInput);
 		if($action==='list'){
-			$info=IO::info($path);if(!$info || $info['type']!=='folder') return $this->failure($agent,$action,'folder not found',$path);
+			$info=IO::infoFull($path);if(!$info || $info['type']!=='folder') return $this->notFound($agent,$action,'folder not found',$relativeInput);
 			return $this->success($agent,$action,$this->listResult(IO::listPath($path),$root),$path);
 		}
 		if($action==='stat'){
-			$info=IO::info($path);if(!$info) return $this->failure($agent,$action,'path not found',$path);
+			$info=IO::infoFull($path);if(!$info) return $this->notFound($agent,$action,'path not found',$relativeInput);
 			return $this->success($agent,$action,$this->fileInfo($info,$root),$path);
 		}
 		if($action==='read'){
-			$info=IO::info($path);if(!$info || $info['type']!=='file') return $this->failure($agent,$action,'file not found',$path);
+			$info=IO::infoFull($path);if(!$info || $info['type']!=='file') return $this->notFound($agent,$action,'file not found',$relativeInput);
 			$max=min(max(intval(_get($body,'maxBytes',2*1024*1024)),1),20*1024*1024);
 			if(intval($info['size'])>$max) return $this->failure($agent,$action,'file exceeds maxBytes',$path);
 			$content=IO::fileSubstr($path,0,intval($info['size']));$base64=!!_get($body,'base64',false);
 			return $this->success($agent,$action,array('path'=>$this->relativePath($path,$root),'encoding'=>$base64?'base64':'utf-8','content'=>$base64?base64_encode($content):$content),$path);
 		}
 		if($action==='download'){
-			$info=IO::info($path);if(!$info || $info['type']!=='file') return $this->failure($agent,$action,'file not found',$path);
+			$info=IO::infoFull($path);if(!$info || $info['type']!=='file') return $this->notFound($agent,$action,'file not found',$relativeInput);
 			$this->store()->audit($agent,$action,'success',$this->relativePath($path,$root));IO::fileOut($path,true,$info['name']);exit;
-		}
-		if($action==='mkdir'){
-			$result=IO::mkdir($path,REPEAT_SKIP);if(!$result) return $this->failure($agent,$action,IO::getLastError('mkdir failed'),$path);
-			return $this->success($agent,$action,$this->relativePath($result,$root),$path);
 		}
 		if($action==='write'){
 			$content=$this->writeContent($body);
@@ -125,16 +128,18 @@ class aiDrivePlugin extends PluginBase {
 			$before=IO::infoFull($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
 			$result=$before?IO::setContent($path,$content):IO::mkfile($path,$content,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('write failed'),$path);
-			return $this->success($agent,$action,$this->fileInfo(IO::info($path),$root),$path);
+			$written=IO::infoFull($path);if(!$written || $written['type']!=='file') return $this->failure($agent,$action,'write verification failed',$path);
+			return $this->success($agent,$action,$this->fileInfo($written,$root),$path);
 		}
 		if($action==='upload'){
 			$file=_get($_FILES,'file',array());if(!$file || !_get($file,'tmp_name')) return $this->failure($agent,$action,'multipart field "file" is required',$path);
 			if(intval(_get($file,'error',UPLOAD_ERR_OK))!==UPLOAD_ERR_OK) return $this->failure($agent,$action,'PHP upload error: '.intval($file['error']),$path);
-			$name=$this->safeName(_get($this->in,'name',_get($file,'name','upload.bin')));$folder=IO::info($path);
-			if(!$folder || $folder['type']!=='folder') return $this->failure($agent,$action,'destination folder not found',$path);
+			$name=$this->safeName(_get($this->in,'name',_get($file,'name','upload.bin')));$folder=IO::infoFull($path);
+			if(!$folder || $folder['type']!=='folder') return $this->notFound($agent,$action,'destination folder not found',$relativeInput);
 			$target=rtrim($path,'/').'/'.$name;$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('upload failed'),$target);
-			return $this->success($agent,$action,$this->fileInfo(IO::info($result),$root),$result);
+			$uploaded=IO::infoFull($target);if(!$uploaded || $uploaded['type']!=='file') return $this->failure($agent,$action,'upload verification failed',$target);
+			return $this->success($agent,$action,$this->fileInfo($uploaded,$root),$target);
 		}
 		if($action==='rename'){
 			$target=$this->renameTarget($body);if(!$target['value']) return $this->failure($agent,$action,'name is required (accepted aliases: newName, to, dest, destination)',$path);
@@ -157,7 +162,7 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,array('deleted'=>true),$path);
 		}
 		if($action==='share'){
-			$info=IO::info($path);if(!$info) return $this->failure($agent,$action,'path not found',$path);
+			$info=IO::infoFull($path);if(!$info) return $this->notFound($agent,$action,'path not found',$relativeInput);
 			$data=array('isLink'=>1,'isShareTo'=>0,'title'=>_get($body,'title',$info['name']),'password'=>_get($body,'password',''),
 				'timeTo'=>intval(_get($body,'timeTo',0)),'options'=>_get($body,'options',array()),'authTo'=>array(),'sourcePath'=>KodIO::clear($path));
 			$sourceID=KodIO::sourceID($path);$shareID=Model('Share')->shareAdd($sourceID?$sourceID:'0',$data);
@@ -170,6 +175,7 @@ class aiDrivePlugin extends PluginBase {
 
 	private function success($agent,$action,$data,$detail=''){$this->store()->audit($agent,$action,'success',$this->auditDetail($detail));show_json($data);}
 	private function failure($agent,$action,$message,$detail=''){$this->store()->audit($agent,$action,'failed',$this->auditDetail($detail.' '.$message));show_json($message,false);}
+	private function notFound($agent,$action,$message,$detail=''){header('HTTP/1.1 404 Not Found');return $this->failure($agent,$action,$message,$detail);}
 	private function auditDetail($detail){return preg_replace('/\{source:\d+\}/','/',strval($detail));}
 	private function listResult($data,$root){
 		$result=array('folders'=>array(),'files'=>array());
@@ -189,17 +195,30 @@ class aiDrivePlugin extends PluginBase {
 		foreach($parts as $index=>$part){
 			$item=$this->childInfo($current,$part);
 			if($item){$current=$item['path'];continue;}
-			if($index!==$last) show_json('parent folder not found: '.$part,false);
+			if($index!==$last)return false;
 			return rtrim($current,'/').'/'.$part;
 		}
 		return $current;
 	}
 	private function childInfo($parent,$name){
-		$list=IO::listPath($parent);if(!is_array($list))return false;
-		foreach(array_merge(_get($list,'folderList',array()),_get($list,'fileList',array())) as $item){
-			if(strval(_get($item,'name',''))===strval($name))return $item;
+		$parentID=KodIO::sourceID($parent);if(!$parentID)return false;
+		$item=Model('Source')->where(array('parentID'=>$parentID,'name'=>strval($name),'isDelete'=>0))->field('sourceID,name,isFolder')->find();
+		if(!$item)return false;
+		$path=KodIO::make($item['sourceID']);$info=IO::infoFull($path);
+		if($info){$info['path']=$path;return $info;}
+		return array('sourceID'=>intval($item['sourceID']),'name'=>$item['name'],'type'=>intval($item['isFolder'])?'folder':'file','path'=>$path);
+	}
+	private function ensureFolderPath($root,$relative){
+		$relative=rawurldecode(strval($relative));if(strpos($relative,"\0")!==false)show_json('invalid path',false);$relative=str_replace('\\','/',$relative);
+		$current=rtrim($root,'/').'/';
+		foreach(explode('/',trim($relative,'/')) as $part){
+			if($part===''||$part==='.')continue;if($part==='..')show_json('path traversal is not allowed',false);
+			$item=$this->childInfo($current,$part);
+			if($item){if($item['type']!=='folder')return false;$current=$item['path'];continue;}
+			$created=IO::mkdir(rtrim($current,'/').'/'.$part,REPEAT_SKIP);if(!$created)return false;
+			$item=$this->childInfo($current,$part);if(!$item || $item['type']!=='folder')return false;$current=$item['path'];
 		}
-		return false;
+		return $current;
 	}
 	private function pathStillExists($path){
 		$sourceID=KodIO::sourceID($path);

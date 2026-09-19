@@ -28,6 +28,8 @@ AI Drive is now developed as an upgrade-friendly KodBox extension instead of a r
 
 File actions are `list`, `stat`, `read`, `download`, `write`, `upload`, `mkdir`, `rename`, `move`, `copy`, `delete` and `share`. `write` creates a missing file or overwrites an existing file and accepts `content`, `text`, `fileContent`, `data` or `body`; set `encoding: "base64"` for binary data. Upload uses multipart field `file`. Paths are relative to `space: "personal"` (default) or the shared `space: "department"` for the 智能体 department.
 
+Paths are resolved strictly against the real KodBox hierarchy. Missing paths return HTTP 404 and never fall back to the space root. `mkdir` creates missing intermediate folders, while upload requires its destination folder to exist.
+
 ## Connection choices
 
 - MCP: use `integrations/ai-drive-mcp/server.mjs` with `AI_DRIVE_URL` and `AI_DRIVE_TOKEN`.
