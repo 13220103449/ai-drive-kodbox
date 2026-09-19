@@ -1,0 +1,74 @@
+name: Publish release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix
+        required: true
+        default: "0.4.8"
+      build:
+        description: Synology package build number
+        required: true
+        default: "0015"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+            $build = "0015"
+          } else {
+            $version = "${{ inputs.version }}"
+            $build = "${{ inputs.build }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "build=$build" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build update and Synology packages
+        shell: pwsh
+        run: ./release/build-release.ps1 -Version "${{ steps.version.outputs.version }}" -Build "${{ steps.version.outputs.build }}" -Python python
+
+      - name: Verify packages
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $build = "${{ steps.version.outputs.build }}"
+          foreach ($file in @(
+            "dist/ai-drive-update-v$version.zip",
+            "dist/ai-drive-update-v$version.zip.sha256",
+            "dist/AI-Drive-$version-$build-noarch.spk"
+          )) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing release asset: $file" }
+          }
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: AI Drive v${{ steps.version.outputs.version }}
+          body_path: release/RELEASE_NOTES_v${{ steps.version.outputs.version }}.md
+          make_latest: true
+          files: |
+            dist/ai-drive-update-v${{ steps.version.outputs.version }}.zip
+            dist/ai-drive-update-v${{ steps.version.outputs.version }}.zip.sha256
+            dist/AI-Drive-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}-noarch.spk
