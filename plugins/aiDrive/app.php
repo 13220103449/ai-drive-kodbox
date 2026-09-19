@@ -17,7 +17,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.7','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.8','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -77,7 +77,9 @@ class aiDrivePlugin extends PluginBase {
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
 				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
-				'rename'=>array('path'=>'existing source path','name'=>'new filename; aliases: newName, to, dest, destination'),
+				'rename'=>array('path'=>'existing source path','name'=>'new filename; newName is equivalent; to/dest/destination also accept a complete target path'),
+				'move'=>array('path'=>'existing source path','to'=>'existing destination folder or complete target path; aliases: dest, destination'),
+				'copy'=>array('path'=>'existing source path','to'=>'existing destination folder or complete target path; aliases: dest, destination'),
 				'webdav'=>array('personal'=>'/personal/','department'=>'/department/','method'=>'use PROPFIND for folders; collection GET is not a directory listing')
 			)
 		));}
@@ -135,20 +137,23 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,$this->fileInfo(IO::info($result),$root),$result);
 		}
 		if($action==='rename'){
-			$name=$this->renameName($body);if(!$name) return $this->failure($agent,$action,'name is required (accepted aliases: newName, to, dest, destination)',$path);
-			$result=IO::rename($path,$name);if(!$result) return $this->failure($agent,$action,IO::getLastError('rename failed'),$path);
+			$target=$this->renameTarget($body);if(!$target['value']) return $this->failure($agent,$action,'name is required (accepted aliases: newName, to, dest, destination)',$path);
+			$result=$target['isPath']?$this->moveToTarget($path,$root,$target['value']):IO::rename($path,$this->safeName($target['value']));
+			if(!$result) return $this->failure($agent,$action,IO::getLastError('rename failed'),$path);
 			return $this->success($agent,$action,$this->relativePath($result,$root),$path);
 		}
 		if($action==='move' || $action==='copy'){
-			$to=$this->agentPath($root,_get($body,'to',''));$dest=IO::info($to);
-			if(!$dest || $dest['type']!=='folder') return $this->failure($agent,$action,'destination folder not found',$to);
-			$result=$action==='move'?IO::move($path,$to,REPEAT_REPLACE):IO::copy($path,$to,REPEAT_REPLACE);
-			if(!$result) return $this->failure($agent,$action,IO::getLastError($action.' failed'),$path.' -> '.$to);
-			return $this->success($agent,$action,$this->relativePath($result,$root),$path.' -> '.$to);
+			$target=$this->targetValue($body);if(!$target) return $this->failure($agent,$action,'destination is required',$path);
+			$result=$action==='move'?$this->moveToTarget($path,$root,$target):$this->copyToTarget($path,$root,$target);
+			if(!$result) return $this->failure($agent,$action,IO::getLastError($action.' failed'),$path.' -> '.$target);
+			return $this->success($agent,$action,$this->relativePath($result,$root),$path.' -> '.$target);
 		}
 		if($action==='delete'){
 			if($path===$root) return $this->failure($agent,$action,'cannot delete Agent home','/');
-			$result=IO::remove($path,false);if(!$result) return $this->failure($agent,$action,IO::getLastError('delete failed'),$path);
+			$result=IO::remove($path,false);
+			// Some source drivers return false after successfully removing an empty
+			// folder. The observable postcondition is authoritative.
+			if(!$result && $this->pathStillExists($path)) return $this->failure($agent,$action,IO::getLastError('delete failed'),$path);
 			return $this->success($agent,$action,array('deleted'=>true),$path);
 		}
 		if($action==='share'){
@@ -179,15 +184,27 @@ class aiDrivePlugin extends PluginBase {
 	private function agentPath($root,$relative){
 		$relative=rawurldecode(strval($relative));if(strpos($relative,"\0")!==false) show_json('invalid path',false);$relative=str_replace('\\','/',$relative);$parts=array();
 		foreach(explode('/',trim($relative,'/')) as $part){if($part===''||$part==='.') continue;if($part==='..') show_json('path traversal is not allowed',false);$parts[]=$part;}
-		$rootID=KodIO::sourceID($root);if(!$parts)return rtrim(KodIO::make($rootID),'/').'/';
-		$parentID=$rootID;$last=count($parts)-1;
+		if(!$parts)return rtrim($root,'/').'/';
+		$current=rtrim($root,'/').'/';$last=count($parts)-1;
 		foreach($parts as $index=>$part){
-			$item=Model('Source')->where(array('parentID'=>$parentID,'name'=>$part,'isDelete'=>0))->field('sourceID,isFolder')->find();
-			if($item){$parentID=intval($item['sourceID']);continue;}
+			$item=$this->childInfo($current,$part);
+			if($item){$current=$item['path'];continue;}
 			if($index!==$last) show_json('parent folder not found: '.$part,false);
-			return rtrim(KodIO::make($parentID),'/').'/'.$part;
+			return rtrim($current,'/').'/'.$part;
 		}
-		return KodIO::make($parentID);
+		return $current;
+	}
+	private function childInfo($parent,$name){
+		$list=IO::listPath($parent);if(!is_array($list))return false;
+		foreach(array_merge(_get($list,'folderList',array()),_get($list,'fileList',array())) as $item){
+			if(strval(_get($item,'name',''))===strval($name))return $item;
+		}
+		return false;
+	}
+	private function pathStillExists($path){
+		$sourceID=KodIO::sourceID($path);
+		if($sourceID)return !!Model('Source')->where(array('sourceID'=>$sourceID,'isDelete'=>0))->find();
+		return !!IO::infoFull($path);
 	}
 	private function relativePath($path,$root){
 		$rootID=KodIO::sourceID($root);$sourceID=KodIO::sourceID($path);if(!$sourceID)return '/';
@@ -199,12 +216,44 @@ class aiDrivePlugin extends PluginBase {
 		return '/'.implode('/',$names);
 	}
 	private function safeName($name){$name=trim(str_replace(array('\\','/',':','*','?','"','<','>','|',"\r","\n"),'_',strval($name)));return in_array($name,array('','.','..'))?'':$name;}
-	private function renameName($body){
+	private function renameTarget($body){
 		foreach(array('name','newName','to','dest','destination') as $key){
 			$value=_get($body,$key,_get($this->in,$key,''));if($value==='')continue;
-			$value=str_replace('\\','/',strval($value));return $this->safeName(basename(rtrim($value,'/')));
+			$value=str_replace('\\','/',strval($value));
+			return array('value'=>$value,'isPath'=>in_array($key,array('to','dest','destination')) && strpos(trim($value,'/'),'/')!==false);
 		}
+		return array('value'=>'','isPath'=>false);
+	}
+	private function targetValue($body){
+		foreach(array('to','dest','destination') as $key){$value=_get($body,$key,_get($this->in,$key,''));if($value!=='')return str_replace('\\','/',strval($value));}
 		return '';
+	}
+	private function targetParts($root,$target){
+		$target=rtrim(str_replace('\\','/',strval($target)),'/');$resolved=$this->agentPath($root,$target);$info=IO::infoFull($resolved);
+		if($info && $info['type']==='folder')return array('folder'=>$resolved,'name'=>'');
+		$clean=trim($target,'/');$pos=strrpos($clean,'/');$folderRelative=$pos===false?'':substr($clean,0,$pos);$name=$this->safeName($pos===false?$clean:substr($clean,$pos+1));
+		$folder=$this->agentPath($root,$folderRelative);$folderInfo=IO::infoFull($folder);
+		if(!$folderInfo || $folderInfo['type']!=='folder')return false;
+		return array('folder'=>$folder,'name'=>$name);
+	}
+	private function moveToTarget($path,$root,$target){
+		$parts=$this->targetParts($root,$target);if(!$parts)return false;$source=IO::infoFull($path);if(!$source)return false;
+		$current=$path;
+		if($parts['name'] && $parts['name']!==$source['name']){$current=IO::rename($current,$parts['name']);if(!$current)return false;}
+		$currentInfo=IO::infoFull($current);$folderID=KodIO::sourceID($parts['folder']);
+		if(($folderID && intval(_get($currentInfo,'parentID',0))===intval($folderID)) || KodIO::clear(IO::pathFather($current))===KodIO::clear($parts['folder']))return $current;
+		$result=IO::move($current,$parts['folder'],REPEAT_REPLACE);if($result)return $result;
+		// Source-backed folders occasionally reject move while copy works. Use a
+		// verified copy/remove fallback and roll the copy back if removal fails.
+		$copy=IO::copy($current,$parts['folder'],REPEAT_REPLACE);if(!$copy)return false;
+		$removed=IO::remove($current,false);if(!$removed && $this->pathStillExists($current)){IO::remove($copy,false);return false;}
+		return $copy;
+	}
+	private function copyToTarget($path,$root,$target){
+		$parts=$this->targetParts($root,$target);if(!$parts)return false;$source=IO::infoFull($path);if(!$source)return false;
+		$result=IO::copy($path,$parts['folder'],REPEAT_REPLACE);if(!$result)return false;
+		if($parts['name'] && $parts['name']!==$source['name']){$renamed=IO::rename($result,$parts['name']);if(!$renamed){IO::remove($result,false);return false;}return $renamed;}
+		return $result;
 	}
 	private function writeContent($body){
 		foreach(array('content','text','fileContent','data','body') as $key){if(array_key_exists($key,$body))return strval($body[$key]);}
