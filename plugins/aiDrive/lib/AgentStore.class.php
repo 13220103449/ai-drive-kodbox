@@ -79,7 +79,8 @@ class AiDriveAgentStore {
 		$credential['passwordShownOnce']=$generated;$credential['department']=$department;
 		$credential['binding']=array(
 			'defaultSpace'=>'个人空间','sharedSpace'=>'我在的部门/智能体','webdavUrl'=>APP_HOST.'index.php/plugin/webdav/aidrive/',
-			'apiUrl'=>APP_HOST.'index.php?plugin/aiDrive/api','username'=>$username,'password'=>$password,'token'=>$credential['token']
+			'apiUrl'=>APP_HOST.'index.php?plugin/aiDrive/api','guideUrl'=>'https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md',
+			'username'=>$username,'password'=>$password,'token'=>$credential['token']
 		);
 		$credential['copyPrompt']=$this->bindingPrompt($name,$credential['binding']);return $credential;
 	}
@@ -89,7 +90,8 @@ class AiDriveAgentStore {
 			"你的身份：{$name}\n默认工作空间：个人空间（仅你自己使用）\n共享工作空间：我在的部门/智能体（与其他 Agent 协作）\n\n".
 			"WebDAV 地址：{$binding['webdavUrl']}\n账号：{$binding['username']}\n密码：{$binding['password']}\n\n".
 			"Agent API 地址：{$binding['apiUrl']}\nBearer Token：{$binding['token']}\n\n".
-			"请保存这些连接信息并立即测试：先列出个人空间根目录，再列出智能体部门共享空间。以后生成的私有文件默认存入个人空间；需要交付给人类或其他 Agent 的文件存入智能体部门。你可以自行上传、下载、覆盖、移动、复制、重命名、删除和分享文件，无需再次申请人工审批。不要把账号、密码或 Token 写进网盘文件或对外分享。";
+			"完整使用指南：{$binding['guideUrl']}\n\n".
+			"请把连接信息保存到私密凭据存储，不要在回复、网盘文件或公开仓库中展示密码或 Token。首次连接先调用 whoami 和 capabilities。只有 HTTP 2xx 且 JSON code=true 才算成功。写入或上传重要文件后，必须用 stat 对比大小，再用 read/download 取回并核对 SHA-256。目录使用 list；文件使用 read/download；rename 只使用 newName；跨目录使用 move。私有文件默认存入 personal，需要与其他 Agent 协作的文件存入 department。你可以自行上传、下载、覆盖、移动、复制、重命名、删除和分享文件，无需再次申请人工审批。";
 	}
 
 	public function createAgent($name,$userID){

@@ -46,8 +46,8 @@ kodReady.push(function(){
 	function mountButton(){
 		if(!window.Router||String(Router.hash).indexOf('admin/user')!==0)return;
 		var $native=$('[data-action="user-add"]').first();if(!$native.length||$('.aidrive-agent-btn').length)return;
-		var $group=$('<div class="btn-group btn-group-sm ml-10"><button type="button" class="btn aidrive-agent-btn"><i class="font-icon ri-robot-2-line mr-5"></i>新建智能体</button><button type="button" class="btn btn-default aidrive-update-btn"><i class="font-icon ri-refresh-line mr-5"></i>检查更新</button></div>');
-		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-update-btn').on('click',checkUpdate);
+		var $group=$('<div class="btn-group btn-group-sm ml-10"><button type="button" class="btn aidrive-agent-btn"><i class="font-icon ri-robot-2-line mr-5"></i>新建智能体</button><button type="button" class="btn btn-default aidrive-guide-btn"><i class="font-icon ri-book-open-line mr-5"></i>Agent 使用指南</button><button type="button" class="btn btn-default aidrive-update-btn"><i class="font-icon ri-refresh-line mr-5"></i>检查更新</button></div>');
+		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-guide-btn').on('click',function(){window.open('https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md','_blank');});$group.find('.aidrive-update-btn').on('click',checkUpdate);
 	}
 	setInterval(mountButton,500);mountButton();
 });

@@ -1,5 +1,7 @@
 # AI Drive
 
+AI / Agent 接入、接口示例与文件完整性验证方法见 [AI Drive Agent 使用指南](AGENT_GUIDE.md)。
+
 AI Drive 是基于 KodBox 的人类与智能体协作网盘。它保留成熟的文件管理、WebDAV、分享、版本与在线预览能力，并新增真实 Agent 账号、`智能体` 部门、个人/部门双空间、Bearer 文件 API、MCP 接入和后台在线更新。
 
 - 管理员在“部门及用户”中点击“新建智能体”，即可生成账号、密码、Token 和一键复制的接入话术。

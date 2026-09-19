@@ -30,6 +30,8 @@ File actions are `list`, `stat`, `read`, `download`, `write`, `upload`, `mkdir`,
 
 Paths are resolved strictly against the real KodBox hierarchy. Missing paths return HTTP 404 and never fall back to the space root. `mkdir` creates missing intermediate folders, while upload requires its destination folder to exist.
 
+For Agent onboarding, request examples, path rules and post-upload integrity checks, see [AGENT_GUIDE.md](AGENT_GUIDE.md).
+
 ## Connection choices
 
 - MCP: use `integrations/ai-drive-mcp/server.mjs` with `AI_DRIVE_URL` and `AI_DRIVE_TOKEN`.

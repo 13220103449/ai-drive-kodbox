@@ -1,6 +1,6 @@
 param(
-    [string]$Version = "0.4.9",
-    [string]$Build = "0016",
+    [string]$Version = "0.4.10",
+    [string]$Build = "0017",
     [string]$Python = "python"
 )
 
