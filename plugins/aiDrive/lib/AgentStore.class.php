@@ -53,9 +53,10 @@ class AiDriveAgentStore {
 	}
 
 	public function listAgents(){
-		$this->initTable();$list=Model($this->agentTable)->field('agentID,name,userID,status,lastUsedAt,createdAt,updatedAt')->order('id desc')->select();
+		$this->initTable();$list=Model($this->agentTable)->field('agentID,name,userID,tokenHash,status,lastUsedAt,createdAt,updatedAt')->order('id desc')->select();
 		if(!$list)return array();
-		foreach($list as &$item){$user=Model('User')->getInfoSimple($item['userID']);$item['username']=_get($user,'name','');$item['nickName']=_get($user,'nickName','');}
+		foreach($list as &$item){$user=Model('User')->getInfoSimple($item['userID']);$item['username']=_get($user,'name','');$item['nickName']=_get($user,'nickName','');
+			$item['tokenFingerprint']=substr($item['tokenHash'],0,12);unset($item['tokenHash']);}
 		return $list;
 	}
 
@@ -101,6 +102,16 @@ class AiDriveAgentStore {
 		Model($this->agentTable)->setDataAuto(false);Model($this->agentTable)->add($data);unset($data['tokenHash']);$data['token']=$token;$data['tokenShownOnce']=true;return $data;
 	}
 	public function revokeAgent($agentID){$this->initTable();$model=Model($this->agentTable);$model->setDataAuto(false);return !!$model->where(array('agentID'=>$agentID))->save(array('status'=>0,'updatedAt'=>time()));}
+	public function rotateAgent($agentID){
+		$this->initTable();$model=Model($this->agentTable);$model->setDataAuto(false);$agent=$model->where(array('agentID'=>$agentID))->find();
+		if(!$agent)show_json('Agent does not exist',false);$user=Model('User')->getInfoSimple($agent['userID']);if(!$user)show_json('Agent KodBox user does not exist',false);
+		$token='aidv_'.bin2hex(random_bytes(32));$hash=hash('sha256',$token);$now=time();
+		if(!$model->where(array('id'=>$agent['id']))->save(array('tokenHash'=>$hash,'status'=>1,'lastUsedAt'=>0,'updatedAt'=>$now)))show_json('Token rotation failed',false);
+		$apiUrl=APP_HOST.'index.php?plugin/aiDrive/api';$guideUrl='https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md';
+		$prompt="请更新你的 AI Drive Bearer Token。旧 Token 已立即失效。\n\nAgent：{$agent['name']}\n账号：{$user['name']}\nAgent API：{$apiUrl}\nBearer Token：{$token}\nToken SHA-256 指纹：".substr($hash,0,12)."\n\n请用新值覆盖私密配置中的 AI_DRIVE_TOKEN，勿在回复、日志或网盘文件中展示 Token。更新后先调用 whoami 和 capabilities，再运行完整验收。使用指南：{$guideUrl}";
+		return array('agentID'=>$agentID,'name'=>$agent['name'],'userID'=>intval($agent['userID']),'username'=>$user['name'],'token'=>$token,
+			'tokenFingerprint'=>substr($hash,0,12),'tokenShownOnce'=>true,'apiUrl'=>$apiUrl,'guideUrl'=>$guideUrl,'copyPrompt'=>$prompt,'updatedAt'=>$now);
+	}
 	public function authenticate($token){
 		if(!$token||strlen($token)<32)return false;$this->initTable();$agent=Model($this->agentTable)->where(array('tokenHash'=>hash('sha256',$token),'status'=>1))->find();
 		if(!$agent)return false;$model=Model($this->agentTable);$model->setDataAuto(false);$model->where(array('id'=>$agent['id']))->save(array('lastUsedAt'=>time()));return $agent;

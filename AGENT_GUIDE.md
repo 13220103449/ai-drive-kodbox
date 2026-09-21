@@ -138,3 +138,12 @@ node tests/agent_api_acceptance.mjs
 ```
 
 脚本会在个人空间创建一个带时间戳的临时目录，真实验证身份、能力、级联建目录、multipart 上传、list/stat/read、SHA-256、rename 字段约束、跨子目录 copy、空目录 delete、不存在路径 404 和子目录 share，最后删除临时目录。正式版本只有通过这套带 Token 的验收才应标记为已验证。
+
+## 8. Token 失效与恢复
+
+- AI Drive 升级不会自动轮换 Agent Token；Codex、邮件或其他平台的周限额也不会影响 Token。
+- `401 invalid or revoked Agent token` 表示请求携带的完整 Token 与服务端记录不匹配，或该记录被管理员停用。
+- 标准 Token 长度为 69 个字符：`aidv_` 加 64 个十六进制字符。环境变量中不要包含引号、空格或换行。
+- 管理员可在“部门及用户 → Agent 密钥管理”查看 Agent 状态和 Token SHA-256 前 12 位指纹。
+- Agent 可在自己的设备上计算指纹：`printf %s "$AI_DRIVE_TOKEN" | sha256sum`，前 12 位应与后台一致。
+- 明文 Token 只在创建或重新生成时显示一次，服务器只保存哈希，无法找回旧明文。若指纹不一致，请在后台重新生成并立即覆盖 Agent 的私密配置；旧 Token 会立即失效。

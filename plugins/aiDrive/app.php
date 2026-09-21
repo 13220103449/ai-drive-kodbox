@@ -17,13 +17,13 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.10','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.11','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
 	public function updateInstall(){KodUser::checkRoot();try{show_json($this->updater()->install());}catch(Exception $error){show_json($error->getMessage(),false);}}
 
-	/** GET lists Agents; POST creates a real account or attaches an existing user; DELETE revokes the token. */
+	/** GET lists Agents; POST creates; PATCH rotates a token; DELETE revokes it. */
 	public function agents(){
 		KodUser::checkRoot();$method=strtoupper(_get($_SERVER,'REQUEST_METHOD','GET'));$body=$this->jsonBody();
 		if($method==='GET') show_json($this->store()->listAgents());
@@ -39,6 +39,10 @@ class aiDrivePlugin extends PluginBase {
 		if($method==='DELETE'){
 			$id=trim(_get($body,'agentID',''));if(!$id) show_json('agentID is required',false);
 			show_json(array('revoked'=>$this->store()->revokeAgent($id)));
+		}
+		if($method==='PATCH'){
+			$id=trim(_get($body,'agentID',''));if(!$id) show_json('agentID is required',false);
+			show_json($this->store()->rotateAgent($id));
 		}
 		show_json('method not allowed',false);
 	}

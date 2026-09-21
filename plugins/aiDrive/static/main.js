@@ -9,6 +9,26 @@ kodReady.push(function(){
 		dialog.$main.find('textarea').val(text).on('click',function(){this.select();});
 	}
 
+	function showRotatedToken(data){
+		var text=data.copyPrompt||'';var env='AI_DRIVE_URL='+data.apiUrl+'\nAI_DRIVE_TOKEN='+data.token+'\n';
+		var html='<div class="aidrive-bind-result"><div class="aidrive-space-note"><b>新 Token 已生效，旧 Token 已立即失效。</b><br>指纹：'+$('<div>').text(data.tokenFingerprint||'').html()+'</div>'+
+			'<p>以下内容只显示这一次。将环境变量覆盖到对应 Agent 的私密配置中：</p><textarea readonly></textarea></div>';
+		var dialog=$.dialog({title:'Agent Token 已重新生成',width:680,height:510,content:html,okVal:'复制环境变量',ok:function(){$.copyText(env);Tips.tips('环境变量已复制');return false;},cancelVal:'完成',cancel:true});
+		dialog.$main.find('textarea').val(text+'\n\n环境变量：\n'+env).on('click',function(){this.select();});
+	}
+
+	function manageAgents(){
+		$.get('{{agentsApi}}').done(function(result){
+			if(!result.code){Tips.tips(result.data||'读取 Agent 失败','warning');return;}
+			var rows=(result.data||[]).map(function(item){var safe=function(v){return $('<div>').text(v==null?'':v).html();};return '<tr><td>'+safe(item.name)+'</td><td>'+safe(item.username)+'</td><td>'+safe(item.agentID)+'</td><td>'+safe(item.tokenFingerprint)+'</td><td>'+(String(item.status)==='1'?'正常':'已停用')+'</td><td><button class="btn btn-sm aidrive-rotate-token" data-id="'+safe(item.agentID)+'">重新生成 Token</button></td></tr>';}).join('');
+			var html='<div class="aidrive-agent-list"><div class="aidrive-space-note">指纹是 Token 的 SHA-256 前 12 位，用于安全核对；不会显示 Token 本身。</div><table class="table"><thead><tr><th>名称</th><th>账号</th><th>Agent ID</th><th>Token 指纹</th><th>状态</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+			var dialog=$.dialog({title:'Agent 密钥管理',width:900,height:460,content:html,cancelVal:'关闭',cancel:true});
+			dialog.$main.on('click','.aidrive-rotate-token',function(){var id=$(this).data('id');$.dialog.confirm('重新生成后，旧 Token 会立即失效。确认继续？',function(){
+				$.ajax({url:'{{agentsApi}}',type:'PATCH',contentType:'application/json',data:JSON.stringify({agentID:id}),dataType:'json'}).done(function(rotated){if(!rotated.code){Tips.tips(rotated.data||'重新生成失败','warning');return;}dialog.close();showRotatedToken(rotated.data);}).fail(function(xhr){Tips.tips((xhr.responseJSON&&xhr.responseJSON.data)||'重新生成失败','warning');});
+			});});
+		}).fail(function(xhr){Tips.tips((xhr.responseJSON&&xhr.responseJSON.data)||'读取 Agent 失败','warning');});
+	}
+
 	function createAgent(){
 		var html='<div class="aidrive-create-form"><div class="aidrive-space-note">账号将自动加入“智能体”部门，并同时拥有个人空间和部门共享空间。</div>'+
 			'<label>智能体名称</label><input name="name" placeholder="例如：OpenClaw 财务助手">'+
@@ -46,8 +66,8 @@ kodReady.push(function(){
 	function mountButton(){
 		if(!window.Router||String(Router.hash).indexOf('admin/user')!==0)return;
 		var $native=$('[data-action="user-add"]').first();if(!$native.length||$('.aidrive-agent-btn').length)return;
-		var $group=$('<div class="btn-group btn-group-sm ml-10"><button type="button" class="btn aidrive-agent-btn"><i class="font-icon ri-robot-2-line mr-5"></i>新建智能体</button><button type="button" class="btn btn-default aidrive-guide-btn"><i class="font-icon ri-book-open-line mr-5"></i>Agent 使用指南</button><button type="button" class="btn btn-default aidrive-update-btn"><i class="font-icon ri-refresh-line mr-5"></i>检查更新</button></div>');
-		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-guide-btn').on('click',function(){window.open('https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md','_blank');});$group.find('.aidrive-update-btn').on('click',checkUpdate);
+		var $group=$('<div class="btn-group btn-group-sm ml-10"><button type="button" class="btn aidrive-agent-btn"><i class="font-icon ri-robot-2-line mr-5"></i>新建智能体</button><button type="button" class="btn btn-default aidrive-manage-btn"><i class="font-icon ri-key-2-line mr-5"></i>Agent 密钥管理</button><button type="button" class="btn btn-default aidrive-guide-btn"><i class="font-icon ri-book-open-line mr-5"></i>使用指南</button><button type="button" class="btn btn-default aidrive-update-btn"><i class="font-icon ri-refresh-line mr-5"></i>检查更新</button></div>');
+		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-manage-btn').on('click',manageAgents);$group.find('.aidrive-guide-btn').on('click',function(){window.open('https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md','_blank');});$group.find('.aidrive-update-btn').on('click',checkUpdate);
 	}
 	setInterval(mountButton,500);mountButton();
 });
