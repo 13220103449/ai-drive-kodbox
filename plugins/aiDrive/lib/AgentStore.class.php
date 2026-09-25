@@ -4,11 +4,12 @@ class AiDriveAgentStore {
 	private $plugin;
 	private $agentTable='plugin_ai_drive_agent';
 	private $auditTable='plugin_ai_drive_audit';
+	private $tokenTable='plugin_ai_drive_token';
 	public function __construct($plugin){$this->plugin=$plugin;}
 
 	public function initTable(){
 		$tables=Model()->db()->getTables();
-		if(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)) return;
+		if(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables)) return;
 		$file=__DIR__.'/data/schema.mysql.sql';
 		if(stristr($GLOBALS['config']['database']['DB_TYPE'],'sqlite')) $file=__DIR__.'/data/schema.sqlite.sql';
 		foreach(sqlSplit(file_get_contents($file)) as $sql) Model()->db()->execute($sql);
@@ -56,8 +57,25 @@ class AiDriveAgentStore {
 		$this->initTable();$list=Model($this->agentTable)->field('agentID,name,userID,tokenHash,status,lastUsedAt,createdAt,updatedAt')->order('id desc')->select();
 		if(!$list)return array();
 		foreach($list as &$item){$user=Model('User')->getInfoSimple($item['userID']);$item['username']=_get($user,'name','');$item['nickName']=_get($user,'nickName','');
-			$item['tokenFingerprint']=substr($item['tokenHash'],0,12);unset($item['tokenHash']);}
+			$item['tokenFingerprint']=substr($item['tokenHash'],0,12);unset($item['tokenHash']);
+			$item['requestCount']=intval(Model($this->auditTable)->where(array('agentID'=>$item['agentID']))->count());
+			$item['failureCount']=intval(Model($this->auditTable)->where(array('agentID'=>$item['agentID'],'result'=>'failed'))->count());}
 		return $list;
+	}
+
+	public function dashboard(){
+		$this->initTable();$agents=$this->listAgents();$active=0;$online=0;$requests=0;$failures=0;$cutoff=time()-300;
+		foreach($agents as $item){if(intval($item['status'])===1)$active++;if(intval($item['lastUsedAt'])>=$cutoff)$online++;$requests+=intval($item['requestCount']);$failures+=intval($item['failureCount']);}
+		return array('agents'=>count($agents),'active'=>$active,'online'=>$online,'requests'=>$requests,'failures'=>$failures,'generatedAt'=>time());
+	}
+	public function listAudit($filters=array()){
+		$this->initTable();$where=array();foreach(array('agentID','action','result') as $key){$value=trim(strval(_get($filters,$key,'')));if($value!=='')$where[$key]=$value;}
+		$model=Model($this->auditTable);if($where)$model=$model->where($where);$limit=min(max(intval(_get($filters,'limit',100)),1),500);
+		$list=$model->order('id desc')->limit($limit)->select();return $list?$list:array();
+	}
+	public function setAgentStatus($agentID,$enabled){
+		$this->initTable();$model=Model($this->agentTable);$model->setDataAuto(false);$saved=$model->where(array('agentID'=>$agentID))->save(array('status'=>$enabled?1:0,'updatedAt'=>time()));
+		return array('agentID'=>$agentID,'status'=>$enabled?1:0,'updated'=>!!$saved);
 	}
 
 	/** Create a standard KodBox user, assign it to 智能体, then issue a one-time machine token. */
@@ -105,20 +123,28 @@ class AiDriveAgentStore {
 	public function rotateAgent($agentID){
 		$this->initTable();$model=Model($this->agentTable);$model->setDataAuto(false);$agent=$model->where(array('agentID'=>$agentID))->find();
 		if(!$agent)show_json('Agent does not exist',false);$user=Model('User')->getInfoSimple($agent['userID']);if(!$user)show_json('Agent KodBox user does not exist',false);
-		$token='aidv_'.bin2hex(random_bytes(32));$hash=hash('sha256',$token);$now=time();
+		$token='aidv_'.bin2hex(random_bytes(32));$hash=hash('sha256',$token);$now=time();$graceUntil=$now+86400;
+		Model($this->tokenTable)->setDataAuto(false);Model($this->tokenTable)->add(array('agentID'=>$agentID,'tokenHash'=>$agent['tokenHash'],'expiresAt'=>$graceUntil,'lastUsedAt'=>intval($agent['lastUsedAt']),'createdAt'=>$now));
 		if(!$model->where(array('id'=>$agent['id']))->save(array('tokenHash'=>$hash,'status'=>1,'lastUsedAt'=>0,'updatedAt'=>$now)))show_json('Token rotation failed',false);
 		$apiUrl=APP_HOST.'index.php?plugin/aiDrive/api';$guideUrl='https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md';
-		$prompt="请更新你的 AI Drive Bearer Token。旧 Token 已立即失效。\n\nAgent：{$agent['name']}\n账号：{$user['name']}\nAgent API：{$apiUrl}\nBearer Token：{$token}\nToken SHA-256 指纹：".substr($hash,0,12)."\n\n请用新值覆盖私密配置中的 AI_DRIVE_TOKEN，勿在回复、日志或网盘文件中展示 Token。更新后先调用 whoami 和 capabilities，再运行完整验收。使用指南：{$guideUrl}";
+		$prompt="请更新你的 AI Drive Bearer Token。旧 Token 将在 24 小时后失效。\n\nAgent：{$agent['name']}\n账号：{$user['name']}\nAgent API：{$apiUrl}\nBearer Token：{$token}\nToken SHA-256 指纹：".substr($hash,0,12)."\n\n请用新值覆盖私密配置中的 AI_DRIVE_TOKEN，勿在回复、日志或网盘文件中展示 Token。更新后先调用 whoami 和 capabilities，再运行完整验收。使用指南：{$guideUrl}";
 		return array('agentID'=>$agentID,'name'=>$agent['name'],'userID'=>intval($agent['userID']),'username'=>$user['name'],'token'=>$token,
-			'tokenFingerprint'=>substr($hash,0,12),'tokenShownOnce'=>true,'apiUrl'=>$apiUrl,'guideUrl'=>$guideUrl,'copyPrompt'=>$prompt,'updatedAt'=>$now);
+			'tokenFingerprint'=>substr($hash,0,12),'tokenShownOnce'=>true,'oldTokenExpiresAt'=>$graceUntil,'apiUrl'=>$apiUrl,'guideUrl'=>$guideUrl,'copyPrompt'=>$prompt,'updatedAt'=>$now);
 	}
 	public function authenticate($token){
-		if(!$token||strlen($token)<32)return false;$this->initTable();$agent=Model($this->agentTable)->where(array('tokenHash'=>hash('sha256',$token),'status'=>1))->find();
+		if(!$token||strlen($token)<32)return false;$this->initTable();$hash=hash('sha256',$token);$agent=Model($this->agentTable)->where(array('tokenHash'=>$hash,'status'=>1))->find();
+		if(!$agent){$overlap=Model($this->tokenTable)->where(array('tokenHash'=>$hash))->find();if($overlap && intval($overlap['expiresAt'])>=time()){$agent=Model($this->agentTable)->where(array('agentID'=>$overlap['agentID'],'status'=>1))->find();if($agent){Model($this->tokenTable)->setDataAuto(false);Model($this->tokenTable)->where(array('id'=>$overlap['id']))->save(array('lastUsedAt'=>time()));}}}
 		if(!$agent)return false;$model=Model($this->agentTable);$model->setDataAuto(false);$model->where(array('id'=>$agent['id']))->save(array('lastUsedAt'=>time()));return $agent;
 	}
 	public function audit($agent,$action,$result,$detail=''){
 		$this->initTable();$data=array('agentID'=>$agent['agentID'],'userID'=>intval($agent['userID']),'action'=>mb_substr($action,0,80),'result'=>mb_substr($result,0,32),
 			'detail'=>mb_substr($detail,0,1000),'ip'=>mb_substr(_get($_SERVER,'REMOTE_ADDR',''),0,64),'createTime'=>time());
 		Model($this->auditTable)->setDataAuto(false);return Model($this->auditTable)->add($data);
+	}
+	public function idempotentGet($agentID,$requestID){if(!$requestID)return false;return Model('plugin_ai_drive_request')->where(array('agentID'=>$agentID,'requestID'=>$requestID))->find();}
+	public function idempotentPut($agentID,$requestID,$action,$success,$response){
+		if(!$requestID)return false;$existing=$this->idempotentGet($agentID,$requestID);if($existing)return $existing;
+		$data=array('agentID'=>$agentID,'requestID'=>mb_substr($requestID,0,128),'action'=>mb_substr($action,0,80),'success'=>$success?1:0,'response'=>json_encode($response),'createTime'=>time());
+		Model('plugin_ai_drive_request')->setDataAuto(false);return Model('plugin_ai_drive_request')->add($data);
 	}
 }

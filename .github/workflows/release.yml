@@ -8,11 +8,11 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: "0.4.11"
+        default: "0.5.0"
       build:
         description: Synology package build number
         required: true
-        default: "0018"
+        default: "0019"
 
 permissions:
   contents: write
@@ -35,7 +35,7 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "push") {
             $version = "${{ github.ref_name }}".TrimStart("v")
-            $build = "0018"
+            $build = "0019"
           } else {
             $version = "${{ inputs.version }}"
             $build = "${{ inputs.build }}"
@@ -43,6 +43,14 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "build=$build" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Validate AI Drive core
+        shell: pwsh
+        run: |
+          php tests/ai_drive_path_test.php
+          php tests/agent_store_token_test.php
+          php tests/data_protection_test.php
+          node --check plugins/aiDrive/static/main.js
 
       - name: Build update and Synology packages
         shell: pwsh

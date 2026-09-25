@@ -139,6 +139,14 @@ node tests/agent_api_acceptance.mjs
 
 脚本会在个人空间创建一个带时间戳的临时目录，真实验证身份、能力、级联建目录、multipart 上传、list/stat/read、SHA-256、rename 字段约束、跨子目录 copy、空目录 delete、不存在路径 404 和子目录 share，最后删除临时目录。正式版本只有通过这套带 Token 的验收才应标记为已验证。
 
+## v0.5 数据安全能力
+
+- 对会改变状态的请求传入唯一 `requestID`，或发送 `Idempotency-Key` 请求头。相同 Agent 与请求编号再次提交时，服务器会返回第一次的结果，避免网络重试造成重复操作。
+- `uploadChunk` 支持顺序分片上传。每片最大 10 MiB，`content` 使用 base64；参数为 `uploadID`、`index`（从 0 开始）、`total`、`path` 和 `name`。最后一片成功后才写入目标文件。
+- `write`、`upload`、`uploadChunk` 覆盖文件，以及 `delete` 删除文件前，服务器自动生成 SHA-256 校验的历史版本。
+- `versions` 返回当前 Agent 的版本记录；`restore` 使用 `versionID` 恢复。恢复前也会保存当前内容，因此恢复操作本身可以撤销。
+- 管理员换钥后，新旧 Token 可并行使用 24 小时。Agent 应尽快保存新 Token，验证 `whoami` 后再移除旧配置。
+
 ## 8. Token 失效与恢复
 
 - AI Drive 升级不会自动轮换 Agent Token；Codex、邮件或其他平台的周限额也不会影响 Token。

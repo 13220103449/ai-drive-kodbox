@@ -7,7 +7,7 @@ function show_json($data, $code = true) {throw new RuntimeException(json_encode(
 class FakeAgentState {
 	public static $row = array('id'=>7,'agentID'=>'agent_test','name'=>'OpenClaw Test','userID'=>2,'tokenHash'=>'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','status'=>0,'lastUsedAt'=>123,'createdAt'=>100,'updatedAt'=>101);
 }
-class FakeDb {public function getTables(){return array('plugin_ai_drive_agent','plugin_ai_drive_audit');}}
+class FakeDb {public function getTables(){return array('plugin_ai_drive_agent','plugin_ai_drive_audit','plugin_ai_drive_token','plugin_ai_drive_version','plugin_ai_drive_update','plugin_ai_drive_request');}}
 class FakeRootModel {public function db(){return new FakeDb();}}
 class FakeUserModel {public function getInfoSimple($id){return intval($id)===2?array('name'=>'agent_example','nickName'=>'OpenClaw Test'):false;}}
 class FakeAgentModel {
@@ -17,10 +17,13 @@ class FakeAgentModel {
 	public function order($value){return $this;}
 	public function where($value){$this->where=$value;return $this;}
 	public function select(){return array(FakeAgentState::$row);}
+	public function count(){return 0;}
 	public function find(){foreach($this->where as $key=>$value){if(_get(FakeAgentState::$row,$key)!=$value)return false;}return FakeAgentState::$row;}
 	public function save($data){foreach($this->where as $key=>$value){if(_get(FakeAgentState::$row,$key)!=$value)return false;}FakeAgentState::$row=array_merge(FakeAgentState::$row,$data);return 1;}
 }
-function Model($name=null){if($name===null)return new FakeRootModel();if($name==='User')return new FakeUserModel();if($name==='plugin_ai_drive_agent')return new FakeAgentModel();throw new RuntimeException('unexpected model '.$name);}
+class FakeTokenModel {public static $rows=array();public function setDataAuto($value){return $this;}public function add($data){self::$rows[]=$data;return count(self::$rows);}public function where($value){return $this;}public function find(){return false;}public function save($data){return 1;}}
+class FakeAuditModel {public function where($value){return $this;}public function count(){return 0;}}
+function Model($name=null){if($name===null)return new FakeRootModel();if($name==='User')return new FakeUserModel();if($name==='plugin_ai_drive_agent')return new FakeAgentModel();if($name==='plugin_ai_drive_token')return new FakeTokenModel();if($name==='plugin_ai_drive_audit')return new FakeAuditModel();throw new RuntimeException('unexpected model '.$name);}
 
 require dirname(__DIR__).'/plugins/aiDrive/lib/AgentStore.class.php';
 
@@ -36,6 +39,8 @@ $beforeID=FakeAgentState::$row['id'];$beforeHash=FakeAgentState::$row['tokenHash
 $rotated=$store->rotateAgent('agent_test');
 assert_same($beforeID,FakeAgentState::$row['id'],'rotation must update the existing Agent record');
 assert_true($beforeHash!==FakeAgentState::$row['tokenHash'],'rotation must replace the old token hash');
+assert_same($beforeHash,FakeTokenModel::$rows[0]['tokenHash'],'rotation must retain the old hash during the grace period');
+assert_true(FakeTokenModel::$rows[0]['expiresAt']>time(),'old token grace period must expire in the future');
 assert_same(hash('sha256',$rotated['token']),FakeAgentState::$row['tokenHash'],'stored hash must match the one-time token');
 assert_same(69,strlen($rotated['token']),'token must have the documented length');
 assert_same(1,FakeAgentState::$row['status'],'rotation must reactivate the Agent');

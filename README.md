@@ -1,5 +1,7 @@
 # AI Drive
 
+Current AI Drive extension version: **0.5.0**. It adds an Agent operations dashboard, queryable audit logs, 24-hour overlapping token rotation, idempotent requests, chunked uploads, file-version recovery, daily metadata backups, storage health checks, and verified update rollback.
+
 AI Drive is a human-and-Agent collaborative drive derived from KodBox. It retains the mature file manager, WebDAV, sharing, versioning and preview stack, and adds real Agent accounts, personal/shared spaces, a Bearer file API, an MCP adapter and administrator-triggered GitHub updates.
 
 - Create an Agent from Administration → Departments and Users to receive one-time credentials and a ready-to-copy onboarding prompt.

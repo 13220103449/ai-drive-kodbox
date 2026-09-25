@@ -3,25 +3,38 @@
 /** AI Drive: real KodBox accounts and unrestricted personal/shared file APIs for Agents. */
 class aiDrivePlugin extends PluginBase {
 	private $store;
+	private $requestID='';
 	public function __construct(){parent::__construct();}
 	public function regist(){$this->hookRegist(array('globalRequest'=>'aiDrivePlugin.route','user.commonJs.insert'=>'aiDrivePlugin.echoJs'));}
 	public function echoJs(){
 		if(_get($GLOBALS,'isRoot')!=1)return;
 		$this->echoFile('static/main.js',array(
 			'{{agentsApi}}'=>$this->pluginApi.'agents',
+			'{{dashboardApi}}'=>$this->pluginApi.'dashboard',
+			'{{auditApi}}'=>$this->pluginApi.'auditLog',
+			'{{versionsApi}}'=>$this->pluginApi.'versions',
+			'{{maintenanceApi}}'=>$this->pluginApi.'maintenance',
 			'{{updateCheckApi}}'=>$this->pluginApi.'updateCheck',
-			'{{updateInstallApi}}'=>$this->pluginApi.'updateInstall'
+			'{{updateInstallApi}}'=>$this->pluginApi.'updateInstall',
+			'{{updateHistoryApi}}'=>$this->pluginApi.'updateHistory',
+			'{{updateRollbackApi}}'=>$this->pluginApi.'updateRollback'
 		));
 	}
 	public function onChangeStatus($status){if($status){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();}}
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.4.11','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.5.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','file-versions','update-rollback')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
-	public function updateCheck(){KodUser::checkRoot();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
-	public function updateInstall(){KodUser::checkRoot();try{show_json($this->updater()->install());}catch(Exception $error){show_json($error->getMessage(),false);}}
+	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
+	public function updateInstall(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->install());}catch(Exception $error){show_json($error->getMessage(),false);}}
+	public function updateHistory(){KodUser::checkRoot();$this->store()->initTable();show_json($this->updater()->history(intval(_get($this->in,'limit',30))));}
+	public function updateRollback(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->rollback(intval(_get($this->jsonBody(),'id',0))));}catch(Exception $error){show_json($error->getMessage(),false);}}
+	public function dashboard(){KodUser::checkRoot();show_json($this->store()->dashboard());}
+	public function auditLog(){KodUser::checkRoot();show_json($this->store()->listAudit($this->in));}
+	public function versions(){KodUser::checkRoot();show_json($this->protection()->listVersions(trim(_get($this->in,'agentID','')),intval(_get($this->in,'limit',100))));}
+	public function maintenance(){KodUser::checkRoot();$method=strtoupper(_get($_SERVER,'REQUEST_METHOD','GET'));try{if($method==='POST')show_json($this->maintenanceService()->backup());show_json(array('health'=>$this->maintenanceService()->health(),'backups'=>$this->maintenanceService()->listBackups()));}catch(Exception $error){show_json($error->getMessage(),false);}}
 
 	/** GET lists Agents; POST creates; PATCH rotates a token; DELETE revokes it. */
 	public function agents(){
@@ -42,6 +55,7 @@ class aiDrivePlugin extends PluginBase {
 		}
 		if($method==='PATCH'){
 			$id=trim(_get($body,'agentID',''));if(!$id) show_json('agentID is required',false);
+			if(array_key_exists('enabled',$body))show_json($this->store()->setAgentStatus($id,!!$body['enabled']));
 			show_json($this->store()->rotateAgent($id));
 		}
 		show_json('method not allowed',false);
@@ -52,6 +66,7 @@ class aiDrivePlugin extends PluginBase {
 		$config=$this->getConfig();if(strval(_get($config,'isOpen','1'))==='0') show_json('AI Drive Agent API is disabled',false);
 		$agent=$this->store()->authenticate($this->bearerToken());
 		if(!$agent){header('HTTP/1.1 401 Unauthorized');show_json('invalid or revoked Agent token',false);}
+		$this->maintenanceService()->maybeDaily();
 		$user=Model('User')->getInfoFull(intval($agent['userID']));
 		if(!$user || intval($user['status'])!==1){header('HTTP/1.1 403 Forbidden');show_json('Agent KodBox account is disabled',false);}
 		Session::set('kodUser',$user);KodUser::init($user['userID']);
@@ -61,6 +76,8 @@ class aiDrivePlugin extends PluginBase {
 		$this->loadOptionalStorageDrivers();
 		$webdav=$this->store()->enableWebdav();
 		$body=$this->jsonBody();$action=strtolower(_get($body,'action',_get($this->in,'action','capabilities')));
+		$this->requestID=trim(strval(_get($body,'requestID',_get($_SERVER,'HTTP_IDEMPOTENCY_KEY',''))));
+		if($this->requestID){$cached=$this->store()->idempotentGet($agent['agentID'],$this->requestID);if($cached){$payload=json_decode($cached['response'],true);show_json($payload,intval($cached['success'])===1);}}
 		$space=strtolower(_get($body,'space',_get($this->in,'space','personal')));$rootSourceID=$user['sourceInfo']['sourceID'];
 		if($space==='department' || $space==='智能体'){
 			$department=$this->store()->ensureAgentDepartment();
@@ -77,10 +94,11 @@ class aiDrivePlugin extends PluginBase {
 		));
 		if($action==='capabilities'){return $this->success($agent,$action,array(
 				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
-			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','mkdir','rename','move','copy','delete','share'),
+			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','share','versions','restore'),
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
 				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
+				'uploadChunk'=>array('path'=>'destination folder','name'=>'target filename','uploadID'=>'client-generated identifier','index'=>'zero-based ordered chunk index','total'=>'chunk count','content'=>'base64 chunk','requestID'=>'recommended for safe retries'),
 				'mkdir'=>array('path'=>'folder path; every missing intermediate folder is created'),
 				'rename'=>array('path'=>'existing source path','newName'=>'new filename; name is equivalent; no other aliases are accepted'),
 				'move'=>array('path'=>'existing source path','to'=>'destination folder or complete target path; missing destination parents are created; aliases: dest, destination'),
@@ -130,6 +148,7 @@ class aiDrivePlugin extends PluginBase {
 			// for a virtual child path. Use infoFull() here so a missing file is
 			// not mistaken for its parent folder.
 			$before=IO::infoFull($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
+			if($before)$this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,'overwrite');
 			$result=$before?IO::setContent($path,$content):IO::mkfile($path,$content,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('write failed'),$path);
 			$written=IO::infoFull($path);if(!$written || $written['type']!=='file') return $this->failure($agent,$action,'write verification failed',$path);
@@ -140,10 +159,21 @@ class aiDrivePlugin extends PluginBase {
 			if(intval(_get($file,'error',UPLOAD_ERR_OK))!==UPLOAD_ERR_OK) return $this->failure($agent,$action,'PHP upload error: '.intval($file['error']),$path);
 			$name=$this->safeName(_get($this->in,'name',_get($file,'name','upload.bin')));$folder=IO::infoFull($path);
 			if(!$folder || $folder['type']!=='folder') return $this->notFound($agent,$action,'destination folder not found',$relativeInput);
-			$target=rtrim($path,'/').'/'.$name;$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
+			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$this->relativePath($target,$root),$target,'overwrite');$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('upload failed'),$target);
 			$uploaded=IO::infoFull($target);if(!$uploaded || $uploaded['type']!=='file') return $this->failure($agent,$action,'upload verification failed',$target);
 			return $this->success($agent,$action,$this->fileInfo($uploaded,$root),$target);
+		}
+		if($action==='uploadchunk'){
+			$folder=IO::infoFull($path);if(!$folder || $folder['type']!=='folder')return $this->notFound($agent,$action,'destination folder not found',$relativeInput);
+			$uploadID=preg_replace('/[^a-zA-Z0-9_.-]/','',strval(_get($body,'uploadID','')));$name=$this->safeName(_get($body,'name',''));$index=intval(_get($body,'index',-1));$total=intval(_get($body,'total',0));
+			if(!$uploadID||!$name||$index<0||$total<1||$index>=$total)return $this->failure($agent,$action,'uploadID, name, index and total are required');$chunk=base64_decode(strval(_get($body,'content','')),true);if($chunk===false||strlen($chunk)>10*1024*1024)return $this->failure($agent,$action,'invalid or oversized chunk');
+			$chunkDir=TEMP_FILES.'aidrive-chunks/';mk_dir($chunkDir);$part=$chunkDir.hash('sha256',$agent['agentID'].'|'.$uploadID).'.part';$meta=$part.'.json';$state=is_file($meta)?json_decode(file_get_contents($meta),true):array('next'=>0,'total'=>$total,'name'=>$name);
+			if(intval($state['next'])!==$index||intval($state['total'])!==$total||$state['name']!==$name)return $this->failure($agent,$action,'chunk order or upload metadata mismatch');
+			if(file_put_contents($part,$chunk,$index===0?LOCK_EX:FILE_APPEND|LOCK_EX)===false)return $this->failure($agent,$action,'cannot persist upload chunk');$state['next']=$index+1;file_put_contents($meta,json_encode($state),LOCK_EX);
+			if($state['next']<$total)return $this->success($agent,$action,array('uploadID'=>$uploadID,'received'=>$state['next'],'total'=>$total,'complete'=>false));
+			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$this->relativePath($target,$root),$target,'overwrite');$result=IO::upload($target,$part,true,REPEAT_REPLACE);@unlink($part);@unlink($meta);
+			if(!$result)return $this->failure($agent,$action,IO::getLastError('chunk upload failed'),$target);$uploaded=IO::infoFull($target);if(!$uploaded)return $this->failure($agent,$action,'chunk upload verification failed',$target);return $this->success($agent,$action,array('uploadID'=>$uploadID,'complete'=>true,'file'=>$this->fileInfo($uploaded,$root)),$target);
 		}
 		if($action==='rename'){
 			$target=$this->renameTarget($body);if(!$target) return $this->failure($agent,$action,'newName is required (name is the only alias)',$path);
@@ -160,6 +190,7 @@ class aiDrivePlugin extends PluginBase {
 		}
 		if($action==='delete'){
 			if($path===$root) return $this->failure($agent,$action,'cannot delete Agent home','/');
+			$this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,'delete');
 			if(!$this->deletePath($path)) return $this->failure($agent,$action,IO::getLastError('delete failed'),$path);
 			return $this->success($agent,$action,array('deleted'=>true),$path);
 		}
@@ -173,11 +204,19 @@ class aiDrivePlugin extends PluginBase {
 			$share=Model('Share')->getInfo($shareID);
 			return $this->success($agent,$action,array('shareID'=>intval($shareID),'shareHash'=>$share['shareHash'],'url'=>APP_HOST.'#s/'.$share['shareHash']),$path);
 		}
+		if($action==='versions')return $this->success($agent,$action,$this->protection()->listVersions($agent['agentID'],intval(_get($body,'limit',100))));
+		if($action==='restore'){
+			$id=intval(_get($body,'versionID',0));if(!$id)return $this->failure($agent,$action,'versionID is required');
+			$items=$this->protection()->listVersions($agent['agentID'],500);$version=false;foreach($items as $item){if(intval($item['id'])===$id){$version=$item;break;}}
+			if(!$version)return $this->notFound($agent,$action,'version not found');$target=$this->agentPath($root,$version['path']);if(!$target)return $this->failure($agent,$action,'version target parent not found',$version['path']);
+			if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$version['path'],$target,'before-restore');$restored=$this->protection()->restore($id,$target);
+			if(!$restored)return $this->failure($agent,$action,'version restore failed',$version['path']);return $this->success($agent,$action,array('restored'=>true,'versionID'=>$id,'path'=>$version['path']),$version['path']);
+		}
 		return $this->failure($agent,$action,'unsupported action');
 	}
 
-	private function success($agent,$action,$data,$detail=''){$this->store()->audit($agent,$action,'success',$this->auditDetail($detail));show_json($data);}
-	private function failure($agent,$action,$message,$detail=''){$this->store()->audit($agent,$action,'failed',$this->auditDetail($detail.' '.$message));show_json($message,false);}
+	private function success($agent,$action,$data,$detail=''){$this->store()->audit($agent,$action,'success',$this->auditDetail($detail));$this->store()->idempotentPut($agent['agentID'],$this->requestID,$action,true,$data);show_json($data);}
+	private function failure($agent,$action,$message,$detail=''){$this->store()->audit($agent,$action,'failed',$this->auditDetail($detail.' '.$message));$this->store()->idempotentPut($agent['agentID'],$this->requestID,$action,false,$message);show_json($message,false);}
 	private function notFound($agent,$action,$message,$detail=''){header('HTTP/1.1 404 Not Found');return $this->failure($agent,$action,$message,$detail);}
 	private function auditDetail($detail){return preg_replace('/\{source:\d+\}/','/',strval($detail));}
 	private function listResult($data,$root){
@@ -305,6 +344,8 @@ class aiDrivePlugin extends PluginBase {
 	}
 	private function store(){if($this->store)return $this->store;include_once($this->pluginPath.'lib/AgentStore.class.php');return $this->store=new AiDriveAgentStore($this);}
 	private function updater(){include_once($this->pluginPath.'lib/Updater.class.php');return new AiDriveUpdater($this);}
+	private function protection(){include_once($this->pluginPath.'lib/DataProtection.class.php');return new AiDriveDataProtection($this->store());}
+	private function maintenanceService(){include_once($this->pluginPath.'lib/Maintenance.class.php');return new AiDriveMaintenance($this->store());}
 	private function bearerToken(){$header=_get($_SERVER,'HTTP_AUTHORIZATION','');if(!$header&&function_exists('getallheaders')){$headers=getallheaders();$header=_get($headers,'Authorization','');}return preg_match('/^Bearer\s+(.+)$/i',$header,$m)?trim($m[1]):'';}
 	private function jsonBody(){$raw=file_get_contents('php://input');$data=$raw?json_decode($raw,true):array();return is_array($data)?$data:array();}
 }

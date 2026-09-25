@@ -4,8 +4,9 @@
 class AiDriveUpdater {
 	private $plugin;
 	private $repo;
+	private $channel;
 	public function __construct($plugin){
-		$this->plugin=$plugin;$config=$plugin->getConfig();$this->repo=trim(_get($config,'githubRepo','13220103449/ai-drive-kodbox'));
+		$this->plugin=$plugin;$config=$plugin->getConfig();$this->repo=trim(_get($config,'githubRepo','13220103449/ai-drive-kodbox'));$this->channel=_get($config,'updateChannel','stable')==='beta'?'beta':'stable';
 		if(!preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#',$this->repo)) show_json('GitHub repository format is invalid',false);
 	}
 
@@ -13,7 +14,7 @@ class AiDriveUpdater {
 		$current=$this->currentVersion();$release=$this->release();$latest=ltrim(strval(_get($release,'tag_name','')),'vV');
 		if(!$latest || !preg_match('/^\d+\.\d+\.\d+(?:[-.][0-9A-Za-z.-]+)?$/',$latest)) throw new Exception('GitHub Release version is invalid');
 		$assets=$this->releaseAssets($release,$latest);
-		return array('repo'=>$this->repo,'currentVersion'=>$current,'latestVersion'=>$latest,'hasUpdate'=>version_compare($latest,$current,'>'),
+		return array('repo'=>$this->repo,'channel'=>$this->channel,'currentVersion'=>$current,'latestVersion'=>$latest,'hasUpdate'=>version_compare($latest,$current,'>'),
 			'notes'=>strval(_get($release,'body','')),'publishedAt'=>strval(_get($release,'published_at','')),'zipSize'=>intval(_get($assets,'zip.size',0)));
 	}
 
@@ -21,9 +22,9 @@ class AiDriveUpdater {
 		if(!class_exists('ZipArchive')) throw new Exception('PHP zip extension is required');
 		mk_dir(TEMP_FILES);$lockPath=TEMP_FILES.'aidrive-update.lock';$lock=fopen($lockPath,'c+');
 		if(!$lock || !flock($lock,LOCK_EX|LOCK_NB)) throw new Exception('Another AI Drive update is running');
-		$work=TEMP_FILES.'aidrive-update-'.date('YmdHis').'-'.rand_string(6).'/';mk_dir($work);
+		$work=TEMP_FILES.'aidrive-update-'.date('YmdHis').'-'.rand_string(6).'/';mk_dir($work);$current=$this->currentVersion();$latest='';$backup='';
 		try{
-			$current=$this->currentVersion();$release=$this->release();$latest=ltrim(strval(_get($release,'tag_name','')),'vV');
+			$release=$this->release();$latest=ltrim(strval(_get($release,'tag_name','')),'vV');
 			if(!version_compare($latest,$current,'>')) return array('updated'=>false,'version'=>$current,'message'=>'already latest');
 			$assets=$this->releaseAssets($release,$latest);$zipFile=$work.'update.zip';
 			$this->download($assets['zip']['browser_download_url'],$zipFile);$checksum=trim($this->request($assets['checksum']['browser_download_url']));
@@ -41,17 +42,32 @@ class AiDriveUpdater {
 				$webdavTarget=PLUGIN_DIR.'webdav/php/webdavServerKod.class.php';
 				if(!is_file($webdavTarget) || !is_writable($webdavTarget) || !@copy($webdavPatch,$webdavTarget)) throw new Exception('Cannot install approved WebDAV compatibility patch');
 			}
-			$installed=$this->currentVersion();if($installed!==$latest){$this->copyTree($backup,$target,true);throw new Exception('Installed version verification failed; backup restored');}
+			$installed=$this->currentVersion();if($installed!==$latest || !$this->healthCheck()){$this->copyTree($backup,$target,true);throw new Exception('Installed version health check failed; backup restored');}
+			$this->record($current,$installed,'success',$backup,'SHA-256 verified; health check passed');
 			return array('updated'=>true,'version'=>$installed,'previousVersion'=>$current,'backup'=>str_replace(BASIC_PATH,'',$backup));
+		}catch(Exception $error){$this->record($current,$latest?$latest:$current,'failed',$backup,$error->getMessage());throw $error;
 		}finally{if(is_dir($work)) del_dir(rtrim($work,'/'));flock($lock,LOCK_UN);fclose($lock);}
 	}
+	public function history($limit=30){$list=Model('plugin_ai_drive_update')->order('id desc')->limit(min(max(intval($limit),1),100))->select();return $list?$list:array();}
+	public function rollback($id){
+		$item=Model('plugin_ai_drive_update')->where(array('id'=>intval($id),'status'=>'success'))->find();if(!$item)throw new Exception('Update history entry was not found');
+		$backup=strval($item['backupPath']);if(!$backup || !is_dir($backup))throw new Exception('Update backup is unavailable');$from=$this->currentVersion();$target=PLUGIN_DIR.'aiDrive/';
+		$currentBackup=DATA_PATH.'update-backup/aiDrive-'.$from.'-before-rollback-'.date('YmdHis').'/';if(!$this->copyTree($target,$currentBackup))throw new Exception('Cannot create rollback safety backup');
+		try{$this->copyTree($backup,$target,true);if(!$this->healthCheck())throw new Exception('Rollback health check failed');}catch(Exception $error){$this->copyTree($currentBackup,$target,true);throw $error;}
+		$to=$this->currentVersion();$this->record($from,$to,'rollback',$currentBackup,'Rollback completed and health check passed');return array('rolledBack'=>true,'fromVersion'=>$from,'version'=>$to,'safetyBackup'=>str_replace(BASIC_PATH,'',$currentBackup));
+	}
+	private function healthCheck(){
+		$package=$this->plugin->pluginPath.'package.json';$app=$this->plugin->pluginPath.'app.php';$store=$this->plugin->pluginPath.'lib/AgentStore.class.php';if(!is_file($package)||!is_file($app)||!is_file($store))return false;
+		$meta=json_decode(file_get_contents($package),true);return is_array($meta)&&preg_match('/^\d+\.\d+\.\d+/',strval(_get($meta,'version','')));
+	}
+	private function record($from,$to,$status,$backup,$detail){Model('plugin_ai_drive_update')->setDataAuto(false);Model('plugin_ai_drive_update')->add(array('fromVersion'=>$from,'toVersion'=>$to,'status'=>$status,'backupPath'=>$backup,'detail'=>mb_substr($detail,0,1000),'createTime'=>time()));}
 
 	private function currentVersion(){
 		$meta=json_decode(file_get_contents($this->plugin->pluginPath.'package.json'),true);return strval(_get($meta,'version','0.0.0'));
 	}
 	private function release(){
-		$data=json_decode($this->request('https://api.github.com/repos/'.$this->repo.'/releases/latest'),true);
-		if(!is_array($data) || _get($data,'draft',false) || _get($data,'prerelease',false)) throw new Exception('No stable GitHub Release is available');return $data;
+		if($this->channel==='stable'){$data=json_decode($this->request('https://api.github.com/repos/'.$this->repo.'/releases/latest'),true);if(!is_array($data)||_get($data,'draft',false)||_get($data,'prerelease',false))throw new Exception('No stable GitHub Release is available');return $data;}
+		$list=json_decode($this->request('https://api.github.com/repos/'.$this->repo.'/releases?per_page=10'),true);foreach(is_array($list)?$list:array() as $item){if(!_get($item,'draft',false))return $item;}throw new Exception('No beta GitHub Release is available');
 	}
 	private function releaseAssets($release,$version){
 		$zipName='ai-drive-update-v'.$version.'.zip';$checksumName=$zipName.'.sha256';$result=array();

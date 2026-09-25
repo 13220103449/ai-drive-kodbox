@@ -3842,3 +3842,9 @@
 
 > kodbox 基于kodexplorer完全重构优化.   
 [kodexplorer产品更新日志](http://doc.kodcloud.com/#/others-changelog)
+## 0.5.0
+
+- Agent 控制台、审计日志、暂停/恢复和运行统计。
+- 双 Token 24 小时平滑换钥、幂等请求与分片上传。
+- 覆盖/删除前文件版本快照、版本恢复、每日元数据备份与存储健康检查。
+- 更新通道、更新历史、安装后健康检查和安全回滚。
