@@ -24,7 +24,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.5.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','file-versions','update-rollback')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -94,7 +94,7 @@ class aiDrivePlugin extends PluginBase {
 		));
 		if($action==='capabilities'){return $this->success($agent,$action,array(
 				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
-			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','share','versions','restore'),
+			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','trash','restoreTrash','share','versions','restore'),
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
 				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
@@ -103,11 +103,29 @@ class aiDrivePlugin extends PluginBase {
 				'rename'=>array('path'=>'existing source path','newName'=>'new filename; name is equivalent; no other aliases are accepted'),
 				'move'=>array('path'=>'existing source path','to'=>'destination folder or complete target path; missing destination parents are created; aliases: dest, destination'),
 				'copy'=>array('path'=>'existing source path','to'=>'destination folder or complete target path; missing destination parents are created; aliases: dest, destination'),
+				'delete'=>array('path'=>'file or folder to move into AI Drive回收站(勿删); content is never permanently deleted'),
+				'trash'=>array('limit'=>'optional, 1-500; lists this Agent soft-deleted items'),
+				'restoreTrash'=>array('trashID'=>'required recycle-bin record id','overwrite'=>'optional boolean; conflicting current content is also moved to recycle bin'),
+				'versions'=>array('path'=>'optional exact file path','limit'=>'optional, 1-500; old content is stored under AI Drive历史版本(勿删)'),
+				'restore'=>array('versionID'=>'required version record id'),
 				'webdav'=>array('personal'=>'/personal/','department'=>'/department/','method'=>'use PROPFIND for folders; collection GET is not a directory listing')
 			)
 		));}
+		if($action==='trash')return $this->success($agent,$action,$this->protection()->listTrash($agent['agentID'],intval(_get($body,'limit',100))));
+		if($action==='restoretrash'){
+			$id=intval(_get($body,'trashID',0));if(!$id)return $this->failure($agent,$action,'trashID is required');
+			$item=$this->protection()->trashItem($id,$agent['agentID']);if(!$item)return $this->notFound($agent,$action,'recycle-bin item not found');
+			if($item['space']!==$space)return $this->failure($agent,$action,'select the original space: '.$item['space']);
+			$parts=$this->targetParts($root,$item['originalPath'],true);if(!$parts || !$parts['name'])return $this->failure($agent,$action,'restore target is invalid',$item['originalPath']);
+			$target=$this->agentPath($root,$item['originalPath']);$existing=$target?IO::infoFull($target):false;
+			if($existing && !_get($body,'overwrite',false))return $this->failure($agent,$action,'target already exists; set overwrite=true to recycle it first',$item['originalPath']);
+			if($existing && !$this->recyclePath($agent,$space,$root,$target,$existing))return $this->failure($agent,$action,'cannot recycle conflicting target',$item['originalPath']);
+			$restored=$this->moveArchivedPath($item['storagePath'],$parts['folder'],$parts['name']);if(!$restored)return $this->failure($agent,$action,IO::getLastError('restore from recycle bin failed'),$item['originalPath']);
+			$this->protection()->forgetTrash($id,$agent['agentID']);return $this->success($agent,$action,array('restored'=>true,'trashID'=>$id,'path'=>$item['originalPath']),$item['originalPath']);
+		}
 
 		$relativeInput=_get($body,'path',_get($this->in,'path',''));
+		$this->assertPublicPath($relativeInput);
 		if($action==='write'){
 			$parent=_get($body,'parentPath',_get($this->in,'parentPath',''));
 			$name=$this->safeName(_get($body,'name',_get($this->in,'name','')));
@@ -148,7 +166,7 @@ class aiDrivePlugin extends PluginBase {
 			// for a virtual child path. Use infoFull() here so a missing file is
 			// not mistaken for its parent folder.
 			$before=IO::infoFull($path);if($before && $before['type']!=='file') return $this->failure($agent,$action,'path is not a file',$path);
-			if($before)$this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,'overwrite');
+			if($before && !$this->snapshotVersion($agent,$space,$root,$path,'overwrite'))return $this->failure($agent,$action,'cannot preserve previous version',$path);
 			$result=$before?IO::setContent($path,$content):IO::mkfile($path,$content,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('write failed'),$path);
 			$written=IO::infoFull($path);if(!$written || $written['type']!=='file') return $this->failure($agent,$action,'write verification failed',$path);
@@ -159,7 +177,7 @@ class aiDrivePlugin extends PluginBase {
 			if(intval(_get($file,'error',UPLOAD_ERR_OK))!==UPLOAD_ERR_OK) return $this->failure($agent,$action,'PHP upload error: '.intval($file['error']),$path);
 			$name=$this->safeName(_get($this->in,'name',_get($file,'name','upload.bin')));$folder=IO::infoFull($path);
 			if(!$folder || $folder['type']!=='folder') return $this->notFound($agent,$action,'destination folder not found',$relativeInput);
-			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$this->relativePath($target,$root),$target,'overwrite');$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
+			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target) && !$this->snapshotVersion($agent,$space,$root,$target,'overwrite'))return $this->failure($agent,$action,'cannot preserve previous version',$target);$result=IO::upload($target,$file['tmp_name'],true,REPEAT_REPLACE);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError('upload failed'),$target);
 			$uploaded=IO::infoFull($target);if(!$uploaded || $uploaded['type']!=='file') return $this->failure($agent,$action,'upload verification failed',$target);
 			return $this->success($agent,$action,$this->fileInfo($uploaded,$root),$target);
@@ -172,7 +190,7 @@ class aiDrivePlugin extends PluginBase {
 			if(intval($state['next'])!==$index||intval($state['total'])!==$total||$state['name']!==$name)return $this->failure($agent,$action,'chunk order or upload metadata mismatch');
 			if(file_put_contents($part,$chunk,$index===0?LOCK_EX:FILE_APPEND|LOCK_EX)===false)return $this->failure($agent,$action,'cannot persist upload chunk');$state['next']=$index+1;file_put_contents($meta,json_encode($state),LOCK_EX);
 			if($state['next']<$total)return $this->success($agent,$action,array('uploadID'=>$uploadID,'received'=>$state['next'],'total'=>$total,'complete'=>false));
-			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$this->relativePath($target,$root),$target,'overwrite');$result=IO::upload($target,$part,true,REPEAT_REPLACE);@unlink($part);@unlink($meta);
+			$target=rtrim($path,'/').'/'.$name;if(IO::infoFull($target) && !$this->snapshotVersion($agent,$space,$root,$target,'overwrite')){@unlink($part);@unlink($meta);return $this->failure($agent,$action,'cannot preserve previous version',$target);}$result=IO::upload($target,$part,true,REPEAT_REPLACE);@unlink($part);@unlink($meta);
 			if(!$result)return $this->failure($agent,$action,IO::getLastError('chunk upload failed'),$target);$uploaded=IO::infoFull($target);if(!$uploaded)return $this->failure($agent,$action,'chunk upload verification failed',$target);return $this->success($agent,$action,array('uploadID'=>$uploadID,'complete'=>true,'file'=>$this->fileInfo($uploaded,$root)),$target);
 		}
 		if($action==='rename'){
@@ -184,15 +202,16 @@ class aiDrivePlugin extends PluginBase {
 		}
 		if($action==='move' || $action==='copy'){
 			$target=$this->targetValue($body);if(!$target) return $this->failure($agent,$action,'destination is required',$path);
+			$this->assertPublicPath($target);
 			$result=$action==='move'?$this->moveToTarget($path,$root,$target):$this->copyToTarget($path,$root,$target);
 			if(!$result) return $this->failure($agent,$action,IO::getLastError($action.' failed'),$path.' -> '.$target);
 			return $this->success($agent,$action,$this->relativePath($result,$root),$path.' -> '.$target);
 		}
 		if($action==='delete'){
 			if($path===$root) return $this->failure($agent,$action,'cannot delete Agent home','/');
-			$this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,'delete');
-			if(!$this->deletePath($path)) return $this->failure($agent,$action,IO::getLastError('delete failed'),$path);
-			return $this->success($agent,$action,array('deleted'=>true),$path);
+			$info=IO::infoFull($path);if(!$info)return $this->notFound($agent,$action,'path not found',$relativeInput);
+			$trash=$this->recyclePath($agent,$space,$root,$path,$info);if(!$trash)return $this->failure($agent,$action,IO::getLastError('move to recycle bin failed'),$path);
+			return $this->success($agent,$action,array('deleted'=>true,'recycled'=>true,'trashID'=>intval($trash['id']),'originalPath'=>$trash['originalPath']),$path);
 		}
 		if($action==='share'){
 			$info=IO::infoFull($path);if(!$info) return $this->notFound($agent,$action,'path not found',$relativeInput);
@@ -204,12 +223,12 @@ class aiDrivePlugin extends PluginBase {
 			$share=Model('Share')->getInfo($shareID);
 			return $this->success($agent,$action,array('shareID'=>intval($shareID),'shareHash'=>$share['shareHash'],'url'=>APP_HOST.'#s/'.$share['shareHash']),$path);
 		}
-		if($action==='versions')return $this->success($agent,$action,$this->protection()->listVersions($agent['agentID'],intval(_get($body,'limit',100))));
+		if($action==='versions')return $this->success($agent,$action,$this->protection()->listVersions($agent['agentID'],intval(_get($body,'limit',100)),strval(_get($body,'path',''))));
 		if($action==='restore'){
 			$id=intval(_get($body,'versionID',0));if(!$id)return $this->failure($agent,$action,'versionID is required');
 			$items=$this->protection()->listVersions($agent['agentID'],500);$version=false;foreach($items as $item){if(intval($item['id'])===$id){$version=$item;break;}}
 			if(!$version)return $this->notFound($agent,$action,'version not found');$target=$this->agentPath($root,$version['path']);if(!$target)return $this->failure($agent,$action,'version target parent not found',$version['path']);
-			if(IO::infoFull($target))$this->protection()->snapshot($agent,$space,$version['path'],$target,'before-restore');$restored=$this->protection()->restore($id,$target);
+			if(IO::infoFull($target) && !$this->snapshotVersion($agent,$space,$root,$target,'before-restore'))return $this->failure($agent,$action,'cannot preserve current version before restore',$version['path']);$restored=$this->protection()->restore($id,$target);
 			if(!$restored)return $this->failure($agent,$action,'version restore failed',$version['path']);return $this->success($agent,$action,array('restored'=>true,'versionID'=>$id,'path'=>$version['path']),$version['path']);
 		}
 		return $this->failure($agent,$action,'unsupported action');
@@ -221,7 +240,7 @@ class aiDrivePlugin extends PluginBase {
 	private function auditDetail($detail){return preg_replace('/\{source:\d+\}/','/',strval($detail));}
 	private function listResult($data,$root){
 		$result=array('folders'=>array(),'files'=>array());
-		foreach(_get($data,'folderList',array()) as $item) $result['folders'][]=$this->fileInfo($item,$root);
+		foreach(_get($data,'folderList',array()) as $item){if($this->isProtectionFolder(_get($item,'name','')))continue;$result['folders'][]=$this->fileInfo($item,$root);}
 		foreach(_get($data,'fileList',array()) as $item) $result['files'][]=$this->fileInfo($item,$root);
 		return $result;
 	}
@@ -250,11 +269,12 @@ class aiDrivePlugin extends PluginBase {
 		if($info){$info['path']=$path;return $info;}
 		return array('sourceID'=>intval($item['sourceID']),'name'=>$item['name'],'type'=>intval($item['isFolder'])?'folder':'file','path'=>$path);
 	}
-	private function ensureFolderPath($root,$relative){
+	private function ensureFolderPath($root,$relative,$allowProtection=false){
 		$relative=rawurldecode(strval($relative));if(strpos($relative,"\0")!==false)show_json('invalid path',false);$relative=str_replace('\\','/',$relative);
 		$current=rtrim($root,'/').'/';
-		foreach(explode('/',trim($relative,'/')) as $part){
+		$position=0;foreach(explode('/',trim($relative,'/')) as $part){
 			if($part===''||$part==='.')continue;if($part==='..')show_json('path traversal is not allowed',false);
+			if($position++===0 && !$allowProtection && $this->isProtectionFolder($part))show_json('AI Drive protection folders are read-only through the Agent API',false);
 			$item=$this->childInfo($current,$part);
 			if($item){if($item['type']!=='folder')return false;$current=$item['path'];continue;}
 			$created=IO::mkdir(rtrim($current,'/').'/'.$part,REPEAT_SKIP);if(!$created)return false;
@@ -281,6 +301,35 @@ class aiDrivePlugin extends PluginBase {
 			$sourceID=KodIO::sourceID($path);if($sourceID)Model('Source')->remove($sourceID,false);
 		}
 		return !$this->pathStillExists($path);
+	}
+	private function protectionFolderName($type){return $type==='trash'?'AI Drive回收站(勿删)':'AI Drive历史版本(勿删)';}
+	private function isProtectionFolder($name){return in_array(strval($name),array($this->protectionFolderName('trash'),$this->protectionFolderName('versions')),true);}
+	private function assertPublicPath($relative){
+		$relative=rawurldecode(str_replace('\\','/',strval($relative)));$first='';
+		foreach(explode('/',trim($relative,'/')) as $part){if($part!==''&&$part!=='.'){$first=$part;break;}}
+		if($this->isProtectionFolder($first))show_json('AI Drive protection folders are read-only through the Agent API',false);
+	}
+	private function protectionFolder($root,$type,$agent){
+		$relative=$this->protectionFolderName($type).'/'.date('YmdH').'/'.$agent['agentID'];
+		if($type==='trash')$relative.='/'.date('YmdHis').'-'.bin2hex(random_bytes(4));
+		return $this->ensureFolderPath($root,$relative,true);
+	}
+	private function snapshotVersion($agent,$space,$root,$path,$operation){
+		$folder=$this->protectionFolder($root,'versions',$agent);if(!$folder)return false;
+		return $this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,$operation,$folder);
+	}
+	private function recyclePath($agent,$space,$root,$path,$info){
+		$relative=$this->relativePath($path,$root);$folder=$this->protectionFolder($root,'trash',$agent);if(!$folder)return false;
+		$archived=$this->moveArchivedPath($path,$folder,_get($info,'name',''));if(!$archived)return false;
+		$record=$this->protection()->recordTrash($agent,$space,$relative,$archived,$info);if($record)return $record;
+		$parts=$this->targetParts($root,$relative,true);if($parts)$this->moveArchivedPath($archived,$parts['folder'],$parts['name']);return false;
+	}
+	private function moveArchivedPath($path,$folder,$name){
+		$info=IO::infoFull($path);if(!$info)return false;$current=$path;
+		if($name && _get($info,'name','')!==$name){$current=IO::rename($current,$name);if(!$current)return false;}
+		$result=IO::move($current,$folder,REPEAT_REPLACE);if($result)return $result;
+		$copy=IO::copy($current,$folder,REPEAT_REPLACE);if(!$copy)return false;
+		if(!$this->deletePath($current)){IO::remove($copy,false);return false;}return $copy;
 	}
 	private function relativePath($path,$root){
 		$rootID=KodIO::sourceID($root);$sourceID=KodIO::sourceID($path);if(!$sourceID)return '/';

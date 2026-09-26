@@ -9,7 +9,7 @@ class AiDriveAgentStore {
 
 	public function initTable(){
 		$tables=Model()->db()->getTables();
-		if(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables)) return;
+		if(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_trash',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables)) return;
 		$file=__DIR__.'/data/schema.mysql.sql';
 		if(stristr($GLOBALS['config']['database']['DB_TYPE'],'sqlite')) $file=__DIR__.'/data/schema.sqlite.sql';
 		foreach(sqlSplit(file_get_contents($file)) as $sql) Model()->db()->execute($sql);
@@ -110,7 +110,7 @@ class AiDriveAgentStore {
 			"WebDAV 地址：{$binding['webdavUrl']}\n账号：{$binding['username']}\n密码：{$binding['password']}\n\n".
 			"Agent API 地址：{$binding['apiUrl']}\nBearer Token：{$binding['token']}\n\n".
 			"完整使用指南：{$binding['guideUrl']}\n\n".
-			"请把连接信息保存到私密凭据存储，不要在回复、网盘文件或公开仓库中展示密码或 Token。首次连接先调用 whoami 和 capabilities。只有 HTTP 2xx 且 JSON code=true 才算成功。写入或上传重要文件后，必须用 stat 对比大小，再用 read/download 取回并核对 SHA-256。目录使用 list；文件使用 read/download；rename 只使用 newName；跨目录使用 move。私有文件默认存入 personal，需要与其他 Agent 协作的文件存入 department。你可以自行上传、下载、覆盖、移动、复制、重命名、删除和分享文件，无需再次申请人工审批。";
+			"请把连接信息保存到私密凭据存储，不要在回复、网盘文件或公开仓库中展示密码或 Token。首次连接先调用 whoami 和 capabilities。只有 HTTP 2xx 且 JSON code=true 才算成功。写入或上传重要文件后，必须用 stat 对比大小，再用 read/download 取回并核对 SHA-256。目录使用 list；文件使用 read/download；rename 只使用 newName；跨目录使用 move。私有文件默认存入 personal，需要与其他 Agent 协作的文件存入 department。你可以自行上传、下载、覆盖、移动、复制、重命名、删除和分享文件，无需再次申请人工审批。delete 为软删除，内容会进入挂载盘回收站；使用 trash 查看、restoreTrash 恢复，Agent 没有永久删除接口。";
 	}
 
 	public function createAgent($name,$userID){

@@ -14,6 +14,7 @@ class FakeSourceStore {
 		2 => array('sourceID' => 2, 'parentID' => 1, 'name' => '我的文档', 'isFolder' => 1, 'isDelete' => 0),
 		3 => array('sourceID' => 3, 'parentID' => 2, 'name' => 'agents-starbucks', 'isFolder' => 1, 'isDelete' => 0),
 		4 => array('sourceID' => 4, 'parentID' => 3, 'name' => 'big1.json', 'isFolder' => 0, 'isDelete' => 0),
+		5 => array('sourceID' => 5, 'parentID' => 1, 'name' => 'AI Drive回收站(勿删)', 'isFolder' => 1, 'isDelete' => 0),
 	);
 }
 class FakeSourceModel {
@@ -87,6 +88,11 @@ assert_same(KodIO::make(3), call_private($plugin, 'agentPath', array($root, '/�
 assert_same(false, call_private($plugin, 'agentPath', array($root, '/missing/child')), 'missing intermediate path must not fall back to root');
 assert_same($root.'missing', call_private($plugin, 'agentPath', array($root, '/missing')), 'missing final path may only be represented as a nonexistent target');
 assert_same(0, IO::$listCalls, 'path resolution must not use display-list aliases');
+
+$rootList = call_private($plugin, 'listResult', array(IO::listPath($root), $root));
+foreach ($rootList['folders'] as $folder) assert_same(false, $folder['name'] === 'AI Drive回收站(勿删)', 'normal listing must hide the mounted recycle folder');
+$protected = call_private($plugin, 'ensureFolderPath', array($root, '/AI Drive回收站(勿删)/20260926', true));
+assert_same('20260926', IO::infoFull($protected)['name'], 'internal protection code must be able to create dated recycle folders');
 
 $created = call_private($plugin, 'ensureFolderPath', array($root, '/new-parent/new-child'));
 $createdInfo = IO::infoFull($created);

@@ -4,7 +4,7 @@ class AiDriveMaintenance {
 	private $store;
 	public function __construct($store){$this->store=$store;$store->initTable();}
 	public function health(){
-		$versionRows=Model('plugin_ai_drive_version')->order('id desc')->limit(1000)->select();$missing=0;foreach($versionRows?$versionRows:array() as $row){if($row['blobPath']&&!is_file(DATA_PATH.ltrim($row['blobPath'],'/')))$missing++;}
+		$versionRows=Model('plugin_ai_drive_version')->order('id desc')->limit(1000)->select();$missing=0;foreach($versionRows?$versionRows:array() as $row){if($row['blobPath']&&strpos($row['blobPath'],'io:')!==0&&!is_file(DATA_PATH.ltrim($row['blobPath'],'/')))$missing++;}
 		return array('dataWritable'=>path_writeable(DATA_PATH),'pluginWritable'=>path_writeable(PLUGIN_DIR.'aiDrive/'),'diskFree'=>intval(@disk_free_space(DATA_PATH)),
 			'diskTotal'=>intval(@disk_total_space(DATA_PATH)),'missingVersionBlobs'=>$missing,'checkedVersions'=>count($versionRows?$versionRows:array()),'time'=>time());
 	}

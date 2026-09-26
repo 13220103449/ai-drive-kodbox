@@ -7,7 +7,7 @@ function show_json($data, $code = true) {throw new RuntimeException(json_encode(
 class FakeAgentState {
 	public static $row = array('id'=>7,'agentID'=>'agent_test','name'=>'OpenClaw Test','userID'=>2,'tokenHash'=>'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','status'=>0,'lastUsedAt'=>123,'createdAt'=>100,'updatedAt'=>101);
 }
-class FakeDb {public function getTables(){return array('plugin_ai_drive_agent','plugin_ai_drive_audit','plugin_ai_drive_token','plugin_ai_drive_version','plugin_ai_drive_update','plugin_ai_drive_request');}}
+class FakeDb {public function getTables(){return array('plugin_ai_drive_agent','plugin_ai_drive_audit','plugin_ai_drive_token','plugin_ai_drive_version','plugin_ai_drive_trash','plugin_ai_drive_update','plugin_ai_drive_request');}}
 class FakeRootModel {public function db(){return new FakeDb();}}
 class FakeUserModel {public function getInfoSimple($id){return intval($id)===2?array('name'=>'agent_example','nickName'=>'OpenClaw Test'):false;}}
 class FakeAgentModel {

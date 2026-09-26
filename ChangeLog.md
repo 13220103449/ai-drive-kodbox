@@ -3840,8 +3840,15 @@
 
 ---- 
 
-> kodbox 基于kodexplorer完全重构优化.   
+> kodbox 基于kodexplorer完全重构优化.
 [kodexplorer产品更新日志](http://doc.kodcloud.com/#/others-changelog)
+## 0.6.0
+
+- Agent 删除改为挂载存储内移动：根目录自动建立 `AI Drive回收站(勿删)`，文件和文件夹不再真正删除。
+- 覆盖写入、上传和版本恢复前，旧文件保存到 `AI Drive历史版本(勿删)`，默认永久保留。
+- 新增 `trash` 与 `restoreTrash` API；普通 Agent 列表隐藏并保护回收站和历史版本目录。
+- 历史版本改存当前挂载盘，避免占用 NAS 本地空间；兼容恢复旧版本的本地快照。
+
 ## 0.5.0
 
 - Agent 控制台、审计日志、暂停/恢复和运行统计。

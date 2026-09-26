@@ -53,6 +53,19 @@ CREATE TABLE IF NOT EXISTS "plugin_ai_drive_version" (
 CREATE INDEX IF NOT EXISTS "idx_ai_drive_version_path" ON "plugin_ai_drive_version" ("agentID","space","path");
 CREATE INDEX IF NOT EXISTS "idx_ai_drive_version_time" ON "plugin_ai_drive_version" ("createTime");
 
+CREATE TABLE IF NOT EXISTS "plugin_ai_drive_trash" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "agentID" varchar(64) NOT NULL,
+  "userID" INTEGER NOT NULL,
+  "space" varchar(32) NOT NULL,
+  "originalPath" varchar(1000) NOT NULL,
+  "storagePath" varchar(1000) NOT NULL,
+  "itemType" varchar(16) NOT NULL,
+  "size" INTEGER NOT NULL DEFAULT 0,
+  "deletedAt" INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_ai_drive_trash_agent" ON "plugin_ai_drive_trash" ("agentID","deletedAt");
+
 CREATE TABLE IF NOT EXISTS "plugin_ai_drive_update" (
   "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
   "fromVersion" varchar(64) NOT NULL,

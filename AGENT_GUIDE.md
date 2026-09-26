@@ -94,11 +94,22 @@ curl -sS -X POST "$AI_DRIVE_API" \
 {"action":"move","space":"personal","path":"/我的文档/agents-starbucks/status-final.txt","to":"/归档/2026/status-final.txt"}
 ```
 
-删除与公开分享：
+删除、查看回收站、恢复与公开分享：
 
 ```json
 {"action":"delete","space":"personal","path":"/我的文档/agents-starbucks/empty-folder"}
+{"action":"trash","space":"personal","limit":100}
+{"action":"restoreTrash","space":"personal","trashID":123}
 {"action":"share","space":"personal","path":"/我的文档/agents-starbucks"}
+```
+
+`delete` 是软删除：内容会移动到当前挂载盘根目录的 `AI Drive回收站(勿删)`，并返回 `trashID`。普通目录列表不会显示该保护目录；使用 `trash` 查询记录，使用 `restoreTrash` 恢复到原路径。目标已存在时默认拒绝恢复；显式传入 `"overwrite":true` 后，现有目标也会先进入回收站。AI Drive 不提供 Agent 永久删除接口。
+
+覆盖写入、重复上传和版本恢复前，旧文件会复制到挂载盘根目录的 `AI Drive历史版本(勿删)`。使用 `versions` 查询版本，使用 `restore` 和 `versionID` 回退：
+
+```json
+{"action":"versions","space":"personal","path":"/我的文档/agents-starbucks/status.txt"}
+{"action":"restore","space":"personal","versionID":456}
 ```
 
 分享成功后返回 `shareID`、`shareHash` 和 `url`。
@@ -143,7 +154,8 @@ node tests/agent_api_acceptance.mjs
 
 - 对会改变状态的请求传入唯一 `requestID`，或发送 `Idempotency-Key` 请求头。相同 Agent 与请求编号再次提交时，服务器会返回第一次的结果，避免网络重试造成重复操作。
 - `uploadChunk` 支持顺序分片上传。每片最大 10 MiB，`content` 使用 base64；参数为 `uploadID`、`index`（从 0 开始）、`total`、`path` 和 `name`。最后一片成功后才写入目标文件。
-- `write`、`upload`、`uploadChunk` 覆盖文件，以及 `delete` 删除文件前，服务器自动生成 SHA-256 校验的历史版本。
+- `write`、`upload`、`uploadChunk` 覆盖文件，以及版本恢复前，服务器自动把旧文件复制到当前挂载存储的 `AI Drive历史版本(勿删)`。
+- `delete` 不再真正删除文件或文件夹，而是移动到 `AI Drive回收站(勿删)`；回收站和挂载盘历史版本默认永久保留。
 - `versions` 返回当前 Agent 的版本记录；`restore` 使用 `versionID` 恢复。恢复前也会保存当前内容，因此恢复操作本身可以撤销。
 - 管理员换钥后，新旧 Token 可并行使用 24 小时。Agent 应尽快保存新 Token，验证 `whoami` 后再移除旧配置。
 

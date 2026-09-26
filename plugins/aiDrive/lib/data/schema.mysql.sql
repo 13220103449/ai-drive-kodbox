@@ -50,6 +50,15 @@ CREATE TABLE IF NOT EXISTS `plugin_ai_drive_version` (
   PRIMARY KEY (`id`), KEY `agentPath` (`agentID`,`space`,`path`(255)), KEY `createTime` (`createTime`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI Drive file versions';
 
+CREATE TABLE IF NOT EXISTS `plugin_ai_drive_trash` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `agentID` varchar(64) NOT NULL, `userID` bigint(20) unsigned NOT NULL,
+  `space` varchar(32) NOT NULL, `originalPath` varchar(1000) NOT NULL,
+  `storagePath` varchar(1000) NOT NULL, `itemType` varchar(16) NOT NULL,
+  `size` bigint(20) unsigned NOT NULL DEFAULT 0, `deletedAt` int(11) unsigned NOT NULL,
+  PRIMARY KEY (`id`), KEY `agentDeleted` (`agentID`,`deletedAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI Drive soft-deleted files';
+
 CREATE TABLE IF NOT EXISTS `plugin_ai_drive_update` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `fromVersion` varchar(64) NOT NULL, `toVersion` varchar(64) NOT NULL, `status` varchar(32) NOT NULL,

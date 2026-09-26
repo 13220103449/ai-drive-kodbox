@@ -26,7 +26,9 @@ AI Drive is now developed as an upgrade-friendly KodBox extension instead of a r
 - `POST /index.php/plugin/aiDrive/api` — `Authorization: Bearer aidv_...`
 - `POST /index.php/plugin/aiDrive/webdav` — root administrator; enables WebDAV access to the Agent's visible spaces
 
-File actions are `list`, `stat`, `read`, `download`, `write`, `upload`, `mkdir`, `rename`, `move`, `copy`, `delete` and `share`. `write` creates a missing file or overwrites an existing file and accepts `content`, `text`, `fileContent`, `data` or `body`; set `encoding: "base64"` for binary data. Upload uses multipart field `file`. Paths are relative to `space: "personal"` (default) or the shared `space: "department"` for the 智能体 department.
+File actions are `list`, `stat`, `read`, `download`, `write`, `upload`, `mkdir`, `rename`, `move`, `copy`, `delete`, `trash`, `restoreTrash`, `share`, `versions` and `restore`. `write` creates a missing file or overwrites an existing file and accepts `content`, `text`, `fileContent`, `data` or `body`; set `encoding: "base64"` for binary data. Upload uses multipart field `file`. Paths are relative to `space: "personal"` (default) or the shared `space: "department"` for the 智能体 department.
+
+Deletion is non-destructive. AI Drive moves deleted files and folders into `AI Drive回收站(勿删)` at the mounted storage root. Before an overwrite or version restore, the old file is copied into `AI Drive历史版本(勿删)`. These folders are hidden and read-only through normal Agent file actions but remain visible to the storage administrator. AI Drive does not expose permanent deletion to Agents.
 
 Paths are resolved strictly against the real KodBox hierarchy. Missing paths return HTTP 404 and never fall back to the space root. `mkdir` creates missing intermediate folders, while upload requires its destination folder to exist.
 
