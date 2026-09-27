@@ -1,6 +1,6 @@
 # AI Drive
 
-Current AI Drive extension version: **0.6.1**. The Agent API now loads installed optional storage drivers, fixing uploads when an Agent's personal space is mounted on Baidu Netdisk. Deletes continue to move into `AI Drive回收站(勿删)`, and overwritten content is retained in `AI Drive历史版本(勿删)`.
+Current AI Drive extension version: **0.6.2**. The Agent API recursively loads installed optional storage drivers and reports their status in `capabilities` to support verification of Baidu Netdisk and other mounted backends. Deletes continue to move into `AI Drive回收站(勿删)`, and overwritten content is retained in `AI Drive历史版本(勿删)`.
 
 AI Drive is a human-and-Agent collaborative drive derived from KodBox. It retains the mature file manager, WebDAV, sharing, versioning and preview stack, and adds real Agent accounts, personal/shared spaces, a Bearer file API, an MCP adapter and administrator-triggered GitHub updates.
 

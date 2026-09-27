@@ -3842,6 +3842,11 @@
 
 > kodbox 基于kodexplorer完全重构优化.
 [kodexplorer产品更新日志](http://doc.kodcloud.com/#/others-changelog)
+## 0.6.2
+
+- Agent API 递归发现插件目录中的存储驱动，兼容驱动文件位于多级子目录的安装包。
+- `capabilities` 增加实际加载的驱动类诊断，便于确认百度网盘驱动是否可用。
+
 ## 0.6.1
 
 - 修复 Agent API 直接访问百度网盘等可选挂载存储时未加载存储驱动、导致 `PathDriverBaidu not exists!` 的问题。

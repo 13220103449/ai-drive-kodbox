@@ -4,6 +4,7 @@
 class aiDrivePlugin extends PluginBase {
 	private $store;
 	private $requestID='';
+	private $loadedStorageDrivers=array();
 	public function __construct(){parent::__construct();}
 	public function regist(){$this->hookRegist(array('globalRequest'=>'aiDrivePlugin.route','user.commonJs.insert'=>'aiDrivePlugin.echoJs'));}
 	public function echoJs(){
@@ -24,7 +25,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.1','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','optional-storage-driver-bootstrap')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.2','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -95,6 +96,7 @@ class aiDrivePlugin extends PluginBase {
 		if($action==='capabilities'){return $this->success($agent,$action,array(
 				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
 			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','trash','restoreTrash','share','versions','restore'),
+			'storageDrivers'=>array('loaded'=>$this->loadedStorageDrivers,'baiduClassLoaded'=>class_exists('PathDriverBaidu',false)),
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
 				'upload'=>array('contentType'=>'multipart/form-data','file'=>'required file field','path'=>'existing destination folder','name'=>'optional target filename'),
@@ -391,10 +393,21 @@ class aiDrivePlugin extends PluginBase {
 			if(is_file($base.$file))include_once($base.$file);
 		}
 		// Agent API requests bypass each storage plugin's route, which normally
-		// loads its path driver. Load installed optional drivers as well so mounted
-		// backends (for example Baidu Netdisk) can be resolved by KodIO.
-		$drivers=glob(PLUGIN_DIR.'*/php/pathDriver*.class.php');
-		if(is_array($drivers))foreach($drivers as $file){include_once($file);}
+		// loads its path driver. Search recursively because some installed store
+		// plugins keep drivers below nested directories (for example cloud drivers).
+		$drivers=array();
+		if(is_dir(PLUGIN_DIR)){
+			$iterator=new RecursiveIteratorIterator(new RecursiveDirectoryIterator(PLUGIN_DIR,FilesystemIterator::SKIP_DOTS));
+			foreach($iterator as $file){
+				if(!$file->isFile() || !preg_match('/^pathDriver.*\.class\.php$/i',$file->getFilename()))continue;
+				$drivers[]=$file->getPathname();
+			}
+		}
+		sort($drivers,SORT_STRING);
+		foreach($drivers as $file){
+			$class=ucfirst(substr(basename($file),0,-10));include_once($file);
+			if(class_exists($class,false))$this->loadedStorageDrivers[]=$class;
+		}
 	}
 	private function store(){if($this->store)return $this->store;include_once($this->pluginPath.'lib/AgentStore.class.php');return $this->store=new AiDriveAgentStore($this);}
 	private function updater(){include_once($this->pluginPath.'lib/Updater.class.php');return new AiDriveUpdater($this);}
