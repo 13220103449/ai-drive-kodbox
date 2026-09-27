@@ -25,7 +25,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.5','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.6','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -317,8 +317,15 @@ class aiDrivePlugin extends PluginBase {
 		return $this->ensureFolderPath($root,$relative,true);
 	}
 	private function snapshotVersion($agent,$space,$root,$path,$operation){
+		$path=$this->canonicalFilePath($path);if(!$path)return false;
 		$folder=$this->protectionFolder($root,'versions',$agent);if(!$folder)return false;
 		return $this->protection()->snapshot($agent,$space,$this->relativePath($path,$root),$path,$operation,$folder);
+	}
+	private function canonicalFilePath($path){
+		// Upload targets have the form {source:parent}/filename. Resolve the file
+		// before recording its path or reading its bytes for a version snapshot.
+		$info=IO::infoFull($path);if(!$info || _get($info,'type')!=='file')return false;
+		$id=intval(_get($info,'sourceID',0));return $id?KodIO::make($id):_get($info,'path',$path);
 	}
 	private function recyclePath($agent,$space,$root,$path,$info){
 		$relative=$this->relativePath($path,$root);$folder=$this->protectionFolder($root,'trash',$agent);if(!$folder)return false;

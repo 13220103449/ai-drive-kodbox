@@ -8,7 +8,7 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: "0.6.5"
+        default: "0.6.6"
       build:
         description: Synology package build number
         required: true

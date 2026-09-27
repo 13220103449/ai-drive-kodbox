@@ -1,6 +1,6 @@
 # AI Drive
 
-Current AI Drive extension version: **0.6.5**. It fixes mounted-storage version restore and WebDAV downloads from Baidu storage. Restores validate staged content and read-back SHA-256 without deleting the live source first, with a recovery copy for failed writes. The role-based documentation hub and MCP transfer verification remain included.
+Current AI Drive extension version: **0.6.6**. It fixes mounted-storage version restore, WebDAV downloads from Baidu storage, and multipart/chunk-upload history paths. Restores validate staged content and read-back SHA-256 without deleting the live source first, with a recovery copy for failed writes. The role-based documentation hub and MCP transfer verification remain included.
 
 Start with the [AI Drive documentation hub](docs/README.md).
 

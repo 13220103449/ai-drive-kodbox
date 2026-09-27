@@ -37,6 +37,9 @@ class KodIO {
 class IO {
 	public static $listCalls = 0;
 	public static function infoFull($path) {
+		if(preg_match('/^\{source:(\d+)\}\/([^\/]+)$/u',strval($path),$child)){
+			foreach(FakeSourceStore::$rows as $row){if(intval($row['parentID'])===intval($child[1]) && $row['name']===$child[2] && !$row['isDelete'])return self::infoFull(KodIO::make($row['sourceID']));}return false;
+		}
 		if (!preg_match('/^\{source:(\d+)\}\/\z/', strval($path), $match)) return false;
 		$id = intval($match[1]);if (!isset(FakeSourceStore::$rows[$id]) || FakeSourceStore::$rows[$id]['isDelete']) return false;$row = FakeSourceStore::$rows[$id];
 		return array('sourceID' => $id, 'name' => $row['name'], 'type' => $row['isFolder'] ? 'folder' : 'file', 'path' => KodIO::make($id));
@@ -88,6 +91,9 @@ assert_same(KodIO::make(3), call_private($plugin, 'agentPath', array($root, '/�
 assert_same(false, call_private($plugin, 'agentPath', array($root, '/missing/child')), 'missing intermediate path must not fall back to root');
 assert_same($root.'missing', call_private($plugin, 'agentPath', array($root, '/missing')), 'missing final path may only be represented as a nonexistent target');
 assert_same(0, IO::$listCalls, 'path resolution must not use display-list aliases');
+assert_same(KodIO::make(4),call_private($plugin,'canonicalFilePath',array(KodIO::make(3).'big1.json')),'upload version must resolve the child source ID');
+assert_same('/我的文档/agents-starbucks/big1.json',call_private($plugin,'relativePath',array(call_private($plugin,'canonicalFilePath',array(KodIO::make(3).'big1.json')),$root)),'upload version must retain filename, not parent directory');
+assert_same(false,call_private($plugin,'canonicalFilePath',array(KodIO::make(3))),'a directory must never be snapshotted as a file');
 
 $rootList = call_private($plugin, 'listResult', array(IO::listPath($root), $root));
 foreach ($rootList['folders'] as $folder) assert_same(false, $folder['name'] === 'AI Drive回收站(勿删)', 'normal listing must hide the mounted recycle folder');
