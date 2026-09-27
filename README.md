@@ -1,6 +1,6 @@
 # AI Drive
 
-Current AI Drive extension version: **0.6.4**. It adds a role-based documentation hub linked from the Agent admin console and new Agent binding instructions. MCP transfer verification and explicit metadata-backup scope disclosures from v0.6.3 remain included.
+Current AI Drive extension version: **0.6.5**. It fixes mounted-storage version restore and WebDAV downloads from Baidu storage. Restores validate staged content and read-back SHA-256 without deleting the live source first, with a recovery copy for failed writes. The role-based documentation hub and MCP transfer verification remain included.
 
 Start with the [AI Drive documentation hub](docs/README.md).
 

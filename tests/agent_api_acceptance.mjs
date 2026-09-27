@@ -19,7 +19,7 @@ async function request(body, expectedCode = true) {
   const response = await fetch(api, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ space, ...body })
+    body: JSON.stringify({ space, ...body }), signal: AbortSignal.timeout(120000)
   });
   const json = await response.json();
   if (expectedCode && (!response.ok || json.code !== true)) {
@@ -56,6 +56,24 @@ try {
   const overwriteRead = await request({ action: 'read', path: `${base}/source/binary.dat`, base64: true });
   if (overwriteStat.json.data.size !== overwrittenBinary.length || sha256(Buffer.from(overwriteRead.json.data.content, 'base64')) !== sha256(overwrittenBinary)) throw new Error('binary overwrite integrity mismatch');
 
+  const versions = await request({action:'versions', path:`${base}/source/binary.dat`});
+  const originalVersion = versions.json.data.find(item => item.sha256 === sha256(binary));
+  if (!originalVersion) throw new Error('original binary version missing');
+  await request({action:'restore', versionID:originalVersion.id});
+  const restoredStat = await request({action:'stat', path:`${base}/source/binary.dat`});
+  const restoredRead = await request({action:'read', path:`${base}/source/binary.dat`, base64:true});
+  if (restoredStat.json.data.size !== binary.length || sha256(Buffer.from(restoredRead.json.data.content,'base64')) !== sha256(binary)) throw new Error('restored binary integrity mismatch');
+  const afterRestore = await request({action:'versions',path:`${base}/source/binary.dat`});
+  if (!afterRestore.json.data.some(item=>item.sha256===sha256(overwrittenBinary))) throw new Error('restore did not preserve replaced content');
+  let webdav = 'not tested: supply AI_DRIVE_DAV_URL, AI_DRIVE_DAV_USER and AI_DRIVE_DAV_PASSWORD';
+  if (process.env.AI_DRIVE_DAV_URL && process.env.AI_DRIVE_DAV_USER && process.env.AI_DRIVE_DAV_PASSWORD) {
+    const url = process.env.AI_DRIVE_DAV_URL.replace(/\/$/,'')+'/'+space+`${base}/source/binary.dat`.split('/').map(encodeURIComponent).join('/');
+    const response = await fetch(url,{headers:{Authorization:'Basic '+Buffer.from(process.env.AI_DRIVE_DAV_USER+':'+process.env.AI_DRIVE_DAV_PASSWORD).toString('base64')},signal:AbortSignal.timeout(120000)});
+    const content = Buffer.from(await response.arrayBuffer());
+    if (!response.ok || sha256(content)!==sha256(binary)) throw new Error(`WebDAV binary download failed: HTTP ${response.status}`);
+    webdav='download SHA-256 verified';
+  }
+
   const listed = await request({ action: 'list', path: `${base}/source` });
   if (!listed.json.data.files.some(item => item.name === 'payload.txt')) throw new Error('list did not return payload.txt');
   const stat = await request({ action: 'stat', path: `${base}/source/payload.txt` });
@@ -75,7 +93,7 @@ try {
 
   const shared = await request({ action: 'share', path: `${base}/copy/deep` });
   if (!shared.json.data.shareHash || !shared.json.data.url) throw new Error('share did not return shareHash and url');
-  console.log(JSON.stringify({ ok: true, base, sha256: sha256(text), binaryBytes: binary.length, overwriteBytes: overwrittenBinary.length, checks: 20 }, null, 2));
+  console.log(JSON.stringify({ ok: true, base, sha256: sha256(text), binaryBytes: binary.length, overwriteBytes: overwrittenBinary.length, versionRestore: 'SHA-256 verified', webdav }, null, 2));
 } finally {
   try { await request({ action: 'delete', path: base }); } catch (error) { console.error(`cleanup warning: ${error.message}`); }
 }

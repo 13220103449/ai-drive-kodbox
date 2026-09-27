@@ -43,12 +43,49 @@ class AiDriveDataProtection {
 	}
 	private function restoreRemote($blob,$target,$item){
 		$source=IO::infoFull($blob);if(!$source || _get($source,'type')!=='file')return false;
-		$parent=IO::pathFather($target);if(!$parent || !IO::infoFull($parent))return false;
-		$targetInfo=IO::infoFull($target);$targetName=$targetInfo?_get($targetInfo,'name',''):basename(str_replace('\\','/',$target));
-		$copy=IO::copy($blob,$parent,REPEAT_REPLACE);if(!$copy)return false;$copyInfo=IO::infoFull($copy);if(!$copyInfo)return false;
-		if($targetInfo && !IO::remove($target,false) && IO::infoFull($target)){IO::remove($copy,false);return false;}
-		if(_get($copyInfo,'name','')!==$targetName){$renamed=IO::rename($copy,$targetName);if(!$renamed){IO::remove($copy,false);return false;}$copy=$renamed;}
-		$restored=IO::infoFull($copy);if(!$restored || intval(_get($restored,'size',0))!==intval($item['size']))return false;return $item;
+		if(intval(_get($source,'size',-1))!==intval($item['size']))return false;
+		// A KodBox file path is an opaque source ID, not a filesystem pathname.
+		// Do not copy to pathFather(sourceID), remove the live source and rename:
+		// deleting that ID invalidates the destination before rename can succeed.
+		$before=IO::infoFull($target);if($before && _get($before,'type')!=='file')return false;
+		$destination=$target;
+		if($before && intval(_get($before,'parentID',0))>0){
+			$destination=rtrim(KodIO::make(intval($before['parentID'])),'/').'/'.$before['name'];
+		}
+		$stage=$this->stageContent($blob,intval($item['size']),strval(_get($item,'sha256','')));if(!$stage)return false;
+		$rollback=false;
+		try{
+			if($before){$rollback=$this->stageContent($target,intval($before['size']),'');if(!$rollback)return false;}
+			try{
+				$result=IO::upload($destination,$stage['file'],false,REPEAT_REPLACE);
+				if($result && $this->matchesContent($result,intval($item['size']),$stage['sha256']))return $item;
+			}catch(Exception $error){error_log('AI Drive version restore write failed: '.$error->getMessage());}
+			if($rollback){
+				$recovered=false;
+				try{$saved=IO::upload($destination,$rollback['file'],false,REPEAT_REPLACE);$recovered=$saved && $this->matchesContent($saved,intval($before['size']),$rollback['sha256']);}catch(Exception $error){error_log('AI Drive version rollback write failed: '.$error->getMessage());}
+				if(!$recovered){
+					// Keep the local recovery copy if the remote backend is unavailable.
+					error_log('AI Drive restore rollback failed; recovery copy retained: '.$rollback['file']);$rollback=false;
+				}
+			}
+			return false;
+		}finally{@unlink($stage['file']);if($rollback)@unlink($rollback['file']);}
+	}
+	private function stageContent($path,$size,$expectedHash){
+		$folder=defined('TEMP_FILES')?TEMP_FILES:sys_get_temp_dir().'/';mk_dir($folder);
+		$file=tempnam($folder,'aidrive-restore-');if($file===false)return false;@chmod($file,0600);
+		$handle=fopen($file,'wb');if(!$handle){@unlink($file);return false;}
+		$hash=hash_init('sha256');$ok=true;
+		try{for($offset=0;$offset<$size;$offset+=$length){
+			$length=min(1024*1024,$size-$offset);$chunk=IO::fileSubstr($path,$offset,$length);
+			if($chunk===false || strlen($chunk)!==$length || fwrite($handle,$chunk)!==$length){$ok=false;break;}hash_update($hash,$chunk);
+		}}finally{fclose($handle);}
+		$actual=hash_final($hash);if(!$ok || ($expectedHash!=='' && !hash_equals($expectedHash,$actual))){@unlink($file);return false;}
+		return array('file'=>$file,'sha256'=>$actual);
+	}
+	private function matchesContent($path,$size,$sha256){
+		$info=IO::infoFull($path);if(!$info || _get($info,'type')!=='file' || intval(_get($info,'size',-1))!==$size)return false;
+		$check=$this->stageContent($path,$size,$sha256);if(!$check)return false;@unlink($check['file']);return true;
 	}
 
 	public function recordTrash($agent,$space,$relative,$storagePath,$info){

@@ -25,7 +25,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.4','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.5','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -388,26 +388,8 @@ class aiDrivePlugin extends PluginBase {
 		return '';
 	}
 	private function loadOptionalStorageDrivers(){
-		$base=PLUGIN_DIR.'webdav/php/';
-		foreach(array('webdavClient.class.php','pathDriverWebdav.class.php','pathDriverNFS.class.php','pathDriverSamba.class.php') as $file){
-			if(is_file($base.$file))include_once($base.$file);
-		}
-		// Agent API requests bypass each storage plugin's route, which normally
-		// loads its path driver. Search recursively because some installed store
-		// plugins keep drivers below nested directories (for example cloud drivers).
-		$drivers=array();
-		if(is_dir(PLUGIN_DIR)){
-			$iterator=new RecursiveIteratorIterator(new RecursiveDirectoryIterator(PLUGIN_DIR,FilesystemIterator::SKIP_DOTS));
-			foreach($iterator as $file){
-				if(!$file->isFile() || !preg_match('/^pathDriver.*\.class\.php$/i',$file->getFilename()))continue;
-				$drivers[]=$file->getPathname();
-			}
-		}
-		sort($drivers,SORT_STRING);
-		foreach($drivers as $file){
-			$class=ucfirst(substr(basename($file),0,-10));include_once($file);
-			if(class_exists($class,false))$this->loadedStorageDrivers[]=$class;
-		}
+		require_once __DIR__.'/lib/StorageDrivers.class.php';
+		$this->loadedStorageDrivers=AiDriveStorageDrivers::load();
 	}
 	private function store(){if($this->store)return $this->store;include_once($this->pluginPath.'lib/AgentStore.class.php');return $this->store=new AiDriveAgentStore($this);}
 	private function updater(){include_once($this->pluginPath.'lib/Updater.class.php');return new AiDriveUpdater($this);}

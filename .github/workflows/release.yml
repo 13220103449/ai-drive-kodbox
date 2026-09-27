@@ -8,7 +8,7 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: "0.6.2"
+        default: "0.6.5"
       build:
         description: Synology package build number
         required: true
@@ -47,14 +47,16 @@ jobs:
       - name: Validate AI Drive core
         shell: pwsh
         run: |
-          php tests/ai_drive_path_test.php
-          php tests/agent_store_token_test.php
-          php tests/data_protection_test.php
-          php tests/maintenance_backup_test.php
-          php tests/agent_storage_driver_bootstrap_test.php
+          foreach ($test in Get-ChildItem tests/*test.php) {
+            php $test.FullName
+            if ($LASTEXITCODE -ne 0) { throw "PHP regression failed: $($test.Name)" }
+          }
           node tests/ai_drive_mcp_test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "MCP regression failed" }
           node --check integrations/ai-drive-mcp/server.mjs
+          if ($LASTEXITCODE -ne 0) { throw "MCP syntax check failed" }
           node --check plugins/aiDrive/static/main.js
+          if ($LASTEXITCODE -ne 0) { throw "Admin syntax check failed" }
 
       - name: Build update and Synology packages
         shell: pwsh

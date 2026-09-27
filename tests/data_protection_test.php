@@ -13,16 +13,25 @@ class MemoryRows {
 }
 function Model($name){if(isset(MemoryRows::$tables[$name]))return new MemoryRows($name);throw new RuntimeException($name);}
 class IO {
+	public static $uploadFailure='';public static $removeCalls=0;public static $aliases=array();
 	public static $files=array();public static $folders=array('/mounted/history'=>true,'/source'=>true,'/target'=>true);
-	public static function infoFull($path){if(isset(self::$files[$path]))return array('type'=>'file','name'=>basename($path),'size'=>strlen(self::$files[$path]));if(isset(self::$folders[$path]))return array('type'=>'folder','name'=>basename($path),'size'=>0);return false;}
-	public static function fileSubstr($path,$offset,$length){return substr(self::$files[$path],$offset,$length);}
+	public static function infoFull($path){$opaque=isset(self::$aliases[$path]);$path=$opaque?self::$aliases[$path]:$path;if(isset(self::$files[$path]))return array('type'=>'file','name'=>basename($path),'size'=>strlen(self::$files[$path]),'parentID'=>$opaque?7:0);if(isset(self::$folders[$path]))return array('type'=>'folder','name'=>basename($path),'size'=>0);return false;}
+	public static function fileSubstr($path,$offset,$length){$path=isset(self::$aliases[$path])?self::$aliases[$path]:$path;return isset(self::$files[$path])?substr(self::$files[$path],$offset,$length):false;}
+	public static function upload($target,$local,$move,$repeat){
+		check(!$move,'staging files must remain available for rollback');
+		$target=str_replace('{source:7}/','/source/',$target);$failure=self::$uploadFailure;self::$uploadFailure='';
+		if($failure==='reject')return false;
+		if($failure==='throw'){self::$files[$target]='partial';throw new RuntimeException('injected write failure');}
+		self::$files[$target]=$failure==='corrupt'?'bad':file_get_contents($local);return $target;
+	}
 	public static function setContent($path,$content){self::$files[$path]=$content;return $path;}
 	public static function mkfile($path,$content,$repeat){self::$files[$path]=$content;return $path;}
 	public static function copy($path,$folder,$repeat){if(!isset(self::$files[$path])||!isset(self::$folders[$folder]))return false;$target=rtrim($folder,'/').'/'.basename($path);self::$files[$target]=self::$files[$path];return $target;}
 	public static function rename($path,$name){if(!isset(self::$files[$path]))return false;$target=dirname($path).'/'.$name;self::$files[$target]=self::$files[$path];unset(self::$files[$path]);return $target;}
-	public static function remove($path,$recycle=false){if(!isset(self::$files[$path]))return false;unset(self::$files[$path]);return true;}
+	public static function remove($path,$recycle=false){self::$removeCalls++;if(!isset(self::$files[$path]))return false;unset(self::$files[$path]);return true;}
 	public static function pathFather($path){return dirname($path);}
 }
+class KodIO {public static function make($id){return '{source:'.$id.'}/';}}
 class StoreStub {public function initTable(){}}
 require dirname(__DIR__).'/plugins/aiDrive/lib/DataProtection.class.php';
 function check($value,$message){if(!$value)throw new RuntimeException($message);}
@@ -35,6 +44,20 @@ IO::$files[$path]='remote-before';$remote=$protection->snapshot($agent,'personal
 check($remote&&strpos($remote['blobPath'],'io:')===0,'remote snapshot must use mounted storage');
 IO::$files[$path]='remote-after';$restored=$protection->restore($remote['id'],$path);
 check($restored&&IO::$files[$path]==='remote-before','remote restore failed');
+
+// Opaque source IDs must not be treated as physical parent/name paths.
+IO::$aliases['{source:42}/']=$path;IO::$files[$path]='current-stays';
+check($protection->restore($remote['id'],'{source:42}/')&&IO::$files[$path]==='remote-before','opaque source restore failed');
+check(IO::$removeCalls===0,'restore must not delete the live source');
+foreach(array('reject','corrupt','throw') as $failure){
+	IO::$files[$path]='current-stays';IO::$uploadFailure=$failure;
+	check(!$protection->restore($remote['id'],'{source:42}/'),'injected failure must not report success');
+	check(IO::$files[$path]==='current-stays','restore failure lost current file: '.$failure);
+}
+$archive=substr($remote['blobPath'],3);$originalArchive=IO::$files[$archive];IO::$files[$archive]=str_repeat('x',strlen($originalArchive));
+check(!$protection->restore($remote['id'],$path)&&IO::$files[$path]==='current-stays','corrupt archive must not overwrite live file');IO::$files[$archive]=$originalArchive;
+IO::$files[$path]='';$empty=$protection->snapshot($agent,'personal','/empty.txt',$path,'overwrite','/mounted/history');IO::$files[$path]='current';
+check($protection->restore($empty['id'],$path)&&IO::$files[$path]==='','zero byte restore failed');
 
 $trash=$protection->recordTrash($agent,'personal','/gone.txt','/mounted/trash/gone.txt',array('type'=>'file','size'=>17));
 check($trash&&$trash['originalPath']==='/gone.txt','trash metadata was not stored');
