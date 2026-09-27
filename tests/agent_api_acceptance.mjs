@@ -11,6 +11,8 @@ if (!api || !token) {
 const runId = new Date().toISOString().replace(/[-:.TZ]/g, '');
 const base = `/_ai_drive_acceptance_${runId}`;
 const text = `AI Drive acceptance ${runId}\n`;
+const binary = Buffer.from(Array.from({length: 700 * 1024}, (_, index) => (index * 73 + 19) % 256));
+const overwrittenBinary = Buffer.from(Array.from({length: 115 * 1024}, (_, index) => (index * 29 + 241) % 256));
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 async function request(body, expectedCode = true) {
@@ -44,6 +46,15 @@ try {
   await request({ action: 'capabilities' });
   await request({ action: 'mkdir', path: `${base}/source` });
   await upload(`${base}/source`, 'payload.txt', text);
+  await upload(`${base}/source`, 'binary.dat', binary);
+  const binaryStat = await request({ action: 'stat', path: `${base}/source/binary.dat` });
+  if (binaryStat.json.data.size !== binary.length) throw new Error('binary upload size mismatch');
+  const binaryRead = await request({ action: 'read', path: `${base}/source/binary.dat`, base64: true });
+  if (sha256(Buffer.from(binaryRead.json.data.content, 'base64')) !== sha256(binary)) throw new Error('binary upload SHA-256 mismatch');
+  await upload(`${base}/source`, 'binary.dat', overwrittenBinary);
+  const overwriteStat = await request({ action: 'stat', path: `${base}/source/binary.dat` });
+  const overwriteRead = await request({ action: 'read', path: `${base}/source/binary.dat`, base64: true });
+  if (overwriteStat.json.data.size !== overwrittenBinary.length || sha256(Buffer.from(overwriteRead.json.data.content, 'base64')) !== sha256(overwrittenBinary)) throw new Error('binary overwrite integrity mismatch');
 
   const listed = await request({ action: 'list', path: `${base}/source` });
   if (!listed.json.data.files.some(item => item.name === 'payload.txt')) throw new Error('list did not return payload.txt');
@@ -64,7 +75,7 @@ try {
 
   const shared = await request({ action: 'share', path: `${base}/copy/deep` });
   if (!shared.json.data.shareHash || !shared.json.data.url) throw new Error('share did not return shareHash and url');
-  console.log(JSON.stringify({ ok: true, base, sha256: sha256(text), checks: 14 }, null, 2));
+  console.log(JSON.stringify({ ok: true, base, sha256: sha256(text), binaryBytes: binary.length, overwriteBytes: overwrittenBinary.length, checks: 20 }, null, 2));
 } finally {
   try { await request({ action: 'delete', path: base }); } catch (error) { console.error(`cleanup warning: ${error.message}`); }
 }

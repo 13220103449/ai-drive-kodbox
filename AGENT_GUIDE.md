@@ -37,6 +37,7 @@ curl -sS -X POST "$AI_DRIVE_API" \
 - `mkdir` 会自动创建全部缺失的中间目录。
 - `copy` 和 `move` 会自动创建目标文件的缺失父目录。
 - `upload` 的目标目录必须已经存在；可先调用 `mkdir`。
+- 使用 MCP 工具时，上传/写入会自动创建缺失的父目录，并在成功前用 `stat` 和读回 SHA-256 验证；普通 REST API 调用仍需由 Agent 自行按下文完成验证。
 - `read` 和 `download` 只接受文件；目录内容使用 `list`。
 
 ## 4. 常用操作
@@ -148,7 +149,7 @@ AI_DRIVE_TOKEN="<测试 Agent Token>" \
 node tests/agent_api_acceptance.mjs
 ```
 
-脚本会在个人空间创建一个带时间戳的临时目录，真实验证身份、能力、级联建目录、multipart 上传、list/stat/read、SHA-256、rename 字段约束、跨子目录 copy、空目录 delete、不存在路径 404 和子目录 share，最后删除临时目录。正式版本只有通过这套带 Token 的验收才应标记为已验证。
+脚本会在个人空间创建一个带时间戳的临时目录，真实验证身份、能力、级联建目录、multipart 上传、700 KiB 二进制文件完整性、同名覆盖、list/stat/read、SHA-256、rename 字段约束、跨子目录 copy、空目录 delete、不存在路径 404 和子目录 share，最后将临时目录移入软删除回收站。正式版本只有通过这套带 Token 的验收才应标记为已验证。
 
 ## v0.5 数据安全能力
 
@@ -167,3 +168,7 @@ node tests/agent_api_acceptance.mjs
 - 管理员可在“部门及用户 → Agent 密钥管理”查看 Agent 状态和 Token SHA-256 前 12 位指纹。
 - Agent 可在自己的设备上计算指纹：`printf %s "$AI_DRIVE_TOKEN" | sha256sum`，前 12 位应与后台一致。
 - 明文 Token 只在创建或重新生成时显示一次，服务器只保存哈希，无法找回旧明文。若指纹不一致，请在后台重新生成并立即覆盖 Agent 的私密配置；旧 Token 会立即失效。
+
+## 9. 备份边界
+
+后台“数据保护”中的自动/手动快照是 **AI Drive 元数据快照**，包含智能体清单、部分操作日志、版本记录、回收站索引和更新记录；它不是完整 KodBox 备份，不包含 KodBox 数据库、文件正文、挂载盘数据或本地版本文件内容。需要灾难恢复时，应在群晖另设备份任务覆盖 Docker 映射的数据目录（本仓库 Compose 默认是 `./ai-drive-data`）、外置数据库（如使用 MySQL）和 Compose/部署配置；百度网盘等挂载内容应由云盘自身版本/备份策略保护。恢复后应验证登录、Agent API、回收站、文件版本，并对关键文件做 SHA-256 校验。不要把同一个 NAS 上的另一个目录误当作异地备份。

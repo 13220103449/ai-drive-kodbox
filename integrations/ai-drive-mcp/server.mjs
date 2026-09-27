@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const base = (process.env.AI_DRIVE_URL || '').replace(/\/$/, '');
 const token = process.env.AI_DRIVE_TOKEN || '';
@@ -23,14 +24,41 @@ async function api(action, args = {}) {
 }
 
 async function uploadBuffer(remotePath, bytes, filename) {
+  const rawPath = String(remotePath || '');
+  if (rawPath.split('/').includes('..')) throw new Error('remotePath must not contain parent-directory segments');
+  const normalizedPath = path.posix.normalize(`/${rawPath.replace(/^\/+/, '')}`);
+  const targetName = path.posix.basename(normalizedPath);
+  if (!targetName || targetName === '.' || targetName === '/') throw new Error('remotePath must include a file name');
+  const folder = path.posix.dirname(normalizedPath);
+  if (folder !== '/') await api('mkdir', {path: folder});
   const form = new FormData();
-  form.append('file', new Blob([bytes]), filename);
-  const folder = remotePath.includes('/') ? remotePath.slice(0, remotePath.lastIndexOf('/')) : '';
-  const url = `${endpoint}&action=upload&space=${encodeURIComponent(space)}&path=${encodeURIComponent(folder)}&name=${encodeURIComponent(filename)}`;
+  form.append('file', new Blob([bytes]), targetName || filename);
+  const uploadFolder = folder === '/' ? '' : folder;
+  const url = `${endpoint}&action=upload&space=${encodeURIComponent(space)}&path=${encodeURIComponent(uploadFolder)}&name=${encodeURIComponent(targetName)}`;
   const response = await fetch(url, {method: 'POST', headers: {Authorization: `Bearer ${token}`}, body: form});
   const result = await response.json();
   if (!response.ok || !result.code) throw new Error(result.data || `HTTP ${response.status}`);
-  return result.data;
+
+  const stat = await api('stat', {path: normalizedPath});
+  const expectedSize = Buffer.byteLength(bytes);
+  if (Number(stat.size) !== expectedSize) {
+    throw new Error(`upload verification failed: expected ${expectedSize} bytes, found ${Number(stat.size)}`);
+  }
+  const downloadUrl = `${endpoint}&action=download&space=${encodeURIComponent(space)}&path=${encodeURIComponent(normalizedPath)}`;
+  const downloaded = await fetch(downloadUrl, {headers: {Authorization: `Bearer ${token}`}});
+  if (!downloaded.ok || !downloaded.body) throw new Error(`upload verification download failed: HTTP ${downloaded.status}`);
+  const digest = createHash('sha256');
+  let downloadedSize = 0;
+  for await (const chunk of downloaded.body) {
+    downloadedSize += chunk.length;
+    digest.update(chunk);
+  }
+  const expectedSha256 = createHash('sha256').update(bytes).digest('hex');
+  const actualSha256 = digest.digest('hex');
+  if (downloadedSize !== expectedSize || actualSha256 !== expectedSha256) {
+    throw new Error(`upload verification failed: SHA-256 or size mismatch for ${normalizedPath}`);
+  }
+  return {...result.data, verification: {size: expectedSize, sha256: actualSha256, verified: true}};
 }
 
 const tools = [
@@ -44,7 +72,7 @@ const tools = [
   ['ai_drive_rename', '重命名文件或目录', {path: {type: 'string'}, name: {type: 'string'}}],
   ['ai_drive_move', '移动到目标目录', {path: {type: 'string'}, to: {type: 'string'}}],
   ['ai_drive_copy', '复制到目标目录', {path: {type: 'string'}, to: {type: 'string'}}],
-  ['ai_drive_delete', '永久删除文件或目录', {path: {type: 'string'}}],
+  ['ai_drive_delete', '将文件或目录移入网盘回收站（可恢复；不会永久删除）', {path: {type: 'string'}}],
   ['ai_drive_share', '创建公开分享链接', {path: {type: 'string'}, title: {type: 'string'}, password: {type: 'string'}, timeTo: {type: 'integer'}}]
 ].map(([name, description, properties]) => ({
   name, description,
@@ -58,13 +86,17 @@ async function callTool(name, a) {
   if (name === 'ai_drive_list') return api('list', {path: a.path || ''});
   if (name === 'ai_drive_stat') return api('stat', a);
   if (name === 'ai_drive_read_text') return api('read', {path: a.path, maxBytes: a.maxBytes || 2 * 1024 * 1024});
-  if (name === 'ai_drive_write_text') return uploadBuffer(a.path, new TextEncoder().encode(a.content), path.basename(a.path));
-  if (name === 'ai_drive_upload') return uploadBuffer(a.remotePath, await fs.readFile(a.localPath), path.basename(a.remotePath));
+  if (name === 'ai_drive_write_text') return uploadBuffer(a.path, new TextEncoder().encode(a.content), path.posix.basename(a.path));
+  if (name === 'ai_drive_upload') return uploadBuffer(a.remotePath, await fs.readFile(a.localPath), path.posix.basename(a.remotePath));
   if (name === 'ai_drive_download') {
     const response = await fetch(`${endpoint}&action=download&space=${encodeURIComponent(space)}&path=${encodeURIComponent(a.remotePath)}`, {headers: {Authorization: `Bearer ${token}`}});
     if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`);
-    await fs.writeFile(a.localPath, Buffer.from(await response.arrayBuffer()));
-    return {saved: a.localPath};
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const stat = await api('stat', {path: a.remotePath});
+    if (Number(stat.size) !== bytes.length) throw new Error(`download verification failed: expected ${Number(stat.size)} bytes, received ${bytes.length}`);
+    await fs.mkdir(path.dirname(path.resolve(a.localPath)), {recursive: true});
+    await fs.writeFile(a.localPath, bytes);
+    return {saved: a.localPath, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), verified: true};
   }
   const action = name.replace('ai_drive_', '');
   return api(action, a);

@@ -50,7 +50,10 @@ jobs:
           php tests/ai_drive_path_test.php
           php tests/agent_store_token_test.php
           php tests/data_protection_test.php
+          php tests/maintenance_backup_test.php
           php tests/agent_storage_driver_bootstrap_test.php
+          node tests/ai_drive_mcp_test.mjs
+          node --check integrations/ai-drive-mcp/server.mjs
           node --check plugins/aiDrive/static/main.js
 
       - name: Build update and Synology packages

@@ -25,7 +25,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.2','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.3','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
