@@ -3842,6 +3842,11 @@
 
 > kodbox 基于kodexplorer完全重构优化.
 [kodexplorer产品更新日志](http://doc.kodcloud.com/#/others-changelog)
+## 0.6.1
+
+- 修复 Agent API 直接访问百度网盘等可选挂载存储时未加载存储驱动、导致 `PathDriverBaidu not exists!` 的问题。
+- 上传完成后继续由现有 API 校验目标文件，未改变 Agent 账号、Token 或挂载配置。
+
 ## 0.6.0
 
 - Agent 删除改为挂载存储内移动：根目录自动建立 `AI Drive回收站(勿删)`，文件和文件夹不再真正删除。

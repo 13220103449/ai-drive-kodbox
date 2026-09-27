@@ -8,7 +8,7 @@ on:
       version:
         description: Version without the v prefix
         required: true
-        default: "0.6.0"
+        default: "0.6.1"
       build:
         description: Synology package build number
         required: true
@@ -50,6 +50,7 @@ jobs:
           php tests/ai_drive_path_test.php
           php tests/agent_store_token_test.php
           php tests/data_protection_test.php
+          php tests/agent_storage_driver_bootstrap_test.php
           node --check plugins/aiDrive/static/main.js
 
       - name: Build update and Synology packages
