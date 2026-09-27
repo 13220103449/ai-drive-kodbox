@@ -2,6 +2,8 @@
 
 这份文档面向 OpenClaw、Codex 及其他能够发送 HTTP 请求的 AI Agent。每个 Agent 使用独立的 KodBox 账号和 Bearer Token，可以在个人空间或“智能体”部门空间中管理文件。
 
+新用户入口：[AI Drive 帮助中心](docs/README.md)，包含管理员、人类用户、Agent API、存储兼容性、回收站/版本、运维和故障排查文档。
+
 ## 1. 连接信息
 
 - REST API：`http://你的域名:8091/index.php?plugin/aiDrive/api`

@@ -98,7 +98,7 @@ class AiDriveAgentStore {
 		$credential['passwordShownOnce']=$generated;$credential['department']=$department;
 		$credential['binding']=array(
 			'defaultSpace'=>'个人空间','sharedSpace'=>'我在的部门/智能体','webdavUrl'=>APP_HOST.'index.php/plugin/webdav/aidrive/',
-			'apiUrl'=>APP_HOST.'index.php?plugin/aiDrive/api','guideUrl'=>'https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md',
+			'apiUrl'=>APP_HOST.'index.php?plugin/aiDrive/api','guideUrl'=>'https://github.com/13220103449/ai-drive-kodbox/blob/main/docs/README.md',
 			'username'=>$username,'password'=>$password,'token'=>$credential['token']
 		);
 		$credential['copyPrompt']=$this->bindingPrompt($name,$credential['binding']);return $credential;
@@ -126,7 +126,7 @@ class AiDriveAgentStore {
 		$token='aidv_'.bin2hex(random_bytes(32));$hash=hash('sha256',$token);$now=time();$graceUntil=$now+86400;
 		Model($this->tokenTable)->setDataAuto(false);Model($this->tokenTable)->add(array('agentID'=>$agentID,'tokenHash'=>$agent['tokenHash'],'expiresAt'=>$graceUntil,'lastUsedAt'=>intval($agent['lastUsedAt']),'createdAt'=>$now));
 		if(!$model->where(array('id'=>$agent['id']))->save(array('tokenHash'=>$hash,'status'=>1,'lastUsedAt'=>0,'updatedAt'=>$now)))show_json('Token rotation failed',false);
-		$apiUrl=APP_HOST.'index.php?plugin/aiDrive/api';$guideUrl='https://github.com/13220103449/ai-drive-kodbox/blob/main/AGENT_GUIDE.md';
+		$apiUrl=APP_HOST.'index.php?plugin/aiDrive/api';$guideUrl='https://github.com/13220103449/ai-drive-kodbox/blob/main/docs/README.md';
 		$prompt="请更新你的 AI Drive Bearer Token。旧 Token 将在 24 小时后失效。\n\nAgent：{$agent['name']}\n账号：{$user['name']}\nAgent API：{$apiUrl}\nBearer Token：{$token}\nToken SHA-256 指纹：".substr($hash,0,12)."\n\n请用新值覆盖私密配置中的 AI_DRIVE_TOKEN，勿在回复、日志或网盘文件中展示 Token。更新后先调用 whoami 和 capabilities，再运行完整验收。使用指南：{$guideUrl}";
 		return array('agentID'=>$agentID,'name'=>$agent['name'],'userID'=>intval($agent['userID']),'username'=>$user['name'],'token'=>$token,
 			'tokenFingerprint'=>substr($hash,0,12),'tokenShownOnce'=>true,'oldTokenExpiresAt'=>$graceUntil,'apiUrl'=>$apiUrl,'guideUrl'=>$guideUrl,'copyPrompt'=>$prompt,'updatedAt'=>$now);

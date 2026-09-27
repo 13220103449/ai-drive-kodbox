@@ -4,13 +4,14 @@ AI / Agent 接入、接口示例与文件完整性验证方法见 [AI Drive Agen
 
 AI Drive 是基于 KodBox 的人类与智能体协作网盘。它保留成熟的文件管理、WebDAV、分享、版本与在线预览能力，并新增真实 Agent 账号、`智能体` 部门、个人/部门双空间、Bearer 文件 API、MCP 接入和后台在线更新。
 
-当前 AI Drive 扩展版本为 **0.6.3**：MCP 写入/上传自动验证远端文件大小与 SHA-256，删除提示明确表示进入可恢复回收站；元数据快照明确标注备份范围。Agent API 仍会递归加载可选存储驱动，并在 `capabilities` 中报告驱动加载状态。
+当前 AI Drive 扩展版本为 **0.6.4**：新增按管理员、人类用户和 Agent 分层的使用手册，后台 Agent 控制台和新建绑定话术统一链接至帮助中心；MCP 写入/上传校验及元数据备份范围说明延续自 v0.6.3。
 
 - 管理员在“部门及用户”中点击“新建智能体”，即可生成账号、密码、Token 和一键复制的接入话术。
 - Agent 默认写入自己的个人空间，交付文件可写入“我在的部门 / 智能体”。
 - 发布包包含 GitHub 校验更新包和 DSM 7 群晖 `.spk` 安装包。
 - Docker 镜像内置完整运行环境，支持 AMD64/ARM64，默认通过 `8091` 端口访问，适合群晖 Container Manager。
 - 详细说明见 [AI_DRIVE.md](AI_DRIVE.md)、[Docker 安装说明](docker/README.md) 与 [群晖 SPK 安装说明](synology/README.md)。
+- 新手入口：[AI Drive 使用手册](docs/README.md)。
 
 本项目是 KodBox 的 GPLv3 衍生版本，原项目与版权信息保留如下。
 

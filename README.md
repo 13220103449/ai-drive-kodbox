@@ -1,6 +1,8 @@
 # AI Drive
 
-Current AI Drive extension version: **0.6.3**. MCP writes and uploads verify the remote size and SHA-256 read-back, delete descriptions accurately identify the recoverable recycle bin, and metadata snapshots disclose their scope. The Agent API continues to discover installed optional storage drivers recursively and reports their status in `capabilities`.
+Current AI Drive extension version: **0.6.4**. It adds a role-based documentation hub linked from the Agent admin console and new Agent binding instructions. MCP transfer verification and explicit metadata-backup scope disclosures from v0.6.3 remain included.
+
+Start with the [AI Drive documentation hub](docs/README.md).
 
 AI Drive is a human-and-Agent collaborative drive derived from KodBox. It retains the mature file manager, WebDAV, sharing, versioning and preview stack, and adds real Agent accounts, personal/shared spaces, a Bearer file API, an MCP adapter and administrator-triggered GitHub updates.
 
