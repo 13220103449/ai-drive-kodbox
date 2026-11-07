@@ -117,6 +117,21 @@ curl -sS -X POST "$AI_DRIVE_API" \
 
 分享成功后返回 `shareID`、`shareHash` 和 `url`。
 
+### 分享转存工作流（收到分享链接时）
+
+Agent 收到任何 AI Drive 分享链接（形如 `https://主机/#s/<hash>`）时，**先用 API 转存到自己的网盘，再用自有通道（`download`/WebDAV）取回文件；不要控制浏览器去下载**。
+
+- `shareInfo`：检查链接（存在性、有效期、下载次数限制、密码、是否允许转存），可选 `sharePath` 只看分享内某个子路径，`children:true` 列出目录内容。
+- `shareSave`：把分享内容复制到自己的空间；`path` 指定目标目录（自动创建，默认 `来自分享`），`sharePath` 只转存子路径，`overwrite:true` 才允许覆盖同名内容（默认重名自动改名）。
+
+```json
+{"action":"shareInfo","space":"personal","url":"https://pan.example.com/#s/EEzncfhm"}
+{"action":"shareSave","space":"personal","url":"https://pan.example.com/#s/EEzncfhm","path":"/来自分享"}
+{"action":"download","space":"personal","path":"/来自分享/<文件名>"}
+```
+
+密码分享先 `shareInfo` 会返回 `needPassword:true`（`code=false`）；带上 `"password":"..."` 重试即可。分享者设置了禁止保存（`notDownload`）时 `shareSave` 会明确拒绝。转存不消耗分享的下载次数。
+
 ## 5. 一致性验证
 
 上传重要文件后，Agent 应执行以下检查：

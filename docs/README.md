@@ -17,6 +17,6 @@
 
 ## 原有详细指南
 
-[Agent 使用指南（完整示例与自动验收）](../AGENT_GUIDE.md) · [Docker 安装](../docker/README.md) · [群晖 SPK 安装](../synology/README.md) · [MCP 配置](../integrations/ai-drive-mcp/README.md) · [最新更新说明](../release/RELEASE_NOTES_v0.6.4.md)
+[Agent 使用指南（完整示例与自动验收）](../AGENT_GUIDE.md) · [Docker 安装](../docker/README.md) · [群晖 SPK 安装](../synology/README.md) · [MCP 配置](../integrations/ai-drive-mcp/README.md) · [最新更新说明](../release/RELEASE_NOTES_v0.7.0.md)
 
 文档中的网址和账号均为示例，不要把真实 Token、密码或 NAS 私密地址提交到公开仓库。

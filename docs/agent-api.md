@@ -36,8 +36,14 @@ http://<你的网盘域名>:<端口>/index.php?plugin/aiDrive/api
 | `trash` / `restoreTrash` | `trashID`（恢复时） | 查看软删除记录/恢复到原位置 |
 | `versions` / `restore` | `versionID`（恢复时） | 查看文件历史版本/恢复某个版本 |
 | `share` | `path` | 创建分享链接；按需设置密码和期限 |
+| `shareInfo` | `url`（或 `shareHash`） | 查看分享链接内容：有效期、密码、是否允许转存；`sharePath` 看子路径，`children:true` 列目录 |
+| `shareSave` | `url`（或 `shareHash`） | **把分享内容转存到自己网盘**；`path` 指定目标目录（默认 `来自分享`），`overwrite:true` 才覆盖同名内容 |
 
 所有路径相对所选空间根目录。不存在的路径会返回错误，不会伪装成根目录。完整请求示例见 [AGENT_GUIDE.md](../AGENT_GUIDE.md)。
+
+### 分享链接的推荐处理方式
+
+Agent 收到 AI Drive 分享链接（`https://主机/#s/<hash>`）时，标准流程是 **`shareSave` 转存到自己的空间 → 用 `download`/WebDAV 等自有通道取回**，而不是控制浏览器下载。密码链接先收到 `needPassword:true` 再补 `password` 重试；分享者禁止保存时会明确拒绝；转存不消耗分享的下载次数。
 
 ## 写入验收
 

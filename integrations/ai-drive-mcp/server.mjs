@@ -73,13 +73,15 @@ const tools = [
   ['ai_drive_move', '移动到目标目录', {path: {type: 'string'}, to: {type: 'string'}}],
   ['ai_drive_copy', '复制到目标目录', {path: {type: 'string'}, to: {type: 'string'}}],
   ['ai_drive_delete', '将文件或目录移入网盘回收站（可恢复；不会永久删除）', {path: {type: 'string'}}],
-  ['ai_drive_share', '创建公开分享链接', {path: {type: 'string'}, title: {type: 'string'}, password: {type: 'string'}, timeTo: {type: 'integer'}}]
+  ['ai_drive_share', '创建公开分享链接', {path: {type: 'string'}, title: {type: 'string'}, password: {type: 'string'}, timeTo: {type: 'integer'}}],
+  ['ai_drive_share_info', '查看网盘分享链接的内容（不下载）；url 形如 https://host/#s/<hash>', {url: {type: 'string'}, sharePath: {type: 'string'}, password: {type: 'string'}, children: {type: 'boolean'}}],
+  ['ai_drive_share_save', '把分享链接的内容转存到自己网盘（收到分享链接后优先用这个，再用自有通道下载，而不是控制浏览器）', {url: {type: 'string'}, sharePath: {type: 'string'}, password: {type: 'string'}, path: {type: 'string'}, overwrite: {type: 'boolean'}}]
 ].map(([name, description, properties]) => ({
   name, description,
-  inputSchema: {type: 'object', properties, required: Object.keys(properties).filter(k => !['path', 'maxBytes', 'title', 'password', 'timeTo'].includes(k) || ['remotePath', 'localPath'].includes(k))}
+  inputSchema: {type: 'object', properties, required: Object.keys(properties).filter(k => !['path', 'maxBytes', 'title', 'password', 'timeTo', 'sharePath', 'overwrite', 'children'].includes(k) || ['remotePath', 'localPath'].includes(k))}
 }));
 for (const tool of tools) {
-  if (tool.name !== 'ai_drive_list') tool.inputSchema.required = Object.keys(tool.inputSchema.properties).filter(k => !['maxBytes','title','password','timeTo'].includes(k));
+  if (tool.name !== 'ai_drive_list') tool.inputSchema.required = Object.keys(tool.inputSchema.properties).filter(k => !['maxBytes','title','password','timeTo','sharePath','overwrite','children'].includes(k));
 }
 
 async function callTool(name, a) {
@@ -98,6 +100,8 @@ async function callTool(name, a) {
     await fs.writeFile(a.localPath, bytes);
     return {saved: a.localPath, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), verified: true};
   }
+  if (name === 'ai_drive_share_info') return api('shareInfo', a);
+  if (name === 'ai_drive_share_save') return api('shareSave', a);
   const action = name.replace('ai_drive_', '');
   return api(action, a);
 }
@@ -114,7 +118,7 @@ process.stdin.on('data', chunk => {
     Promise.resolve().then(async () => {
       const request = JSON.parse(line);
       if (!Object.hasOwn(request, 'id')) return;
-      if (request.method === 'initialize') return {protocolVersion: '2024-11-05', capabilities: {tools: {}}, serverInfo: {name: 'ai-drive-mcp', version: '0.2.0'}};
+      if (request.method === 'initialize') return {protocolVersion: '2024-11-05', capabilities: {tools: {}}, serverInfo: {name: 'ai-drive-mcp', version: '0.3.0'}};
       if (request.method === 'ping') return {};
       if (request.method === 'tools/list') return {tools};
       if (request.method === 'tools/call') {

@@ -25,7 +25,7 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.6.6','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.7.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths','share-transfer')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
@@ -95,7 +95,7 @@ class aiDrivePlugin extends PluginBase {
 		));
 		if($action==='capabilities'){return $this->success($agent,$action,array(
 				'protocol'=>'ai-drive-agent-v1','authentication'=>'Bearer','agentAccounts'=>true,'fileBackend'=>'KodBox','webdav'=>$webdav,'spaces'=>array('personal','department'),
-			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','trash','restoreTrash','share','versions','restore'),
+			'restActions'=>array('capabilities','whoami','list','stat','read','download','write','upload','uploadChunk','mkdir','rename','move','copy','delete','trash','restoreTrash','share','shareInfo','shareSave','versions','restore'),
 			'storageDrivers'=>array('loaded'=>$this->loadedStorageDrivers,'baiduClassLoaded'=>class_exists('PathDriverBaidu',false)),
 			'parameters'=>array(
 				'write'=>array('path'=>'target file path; the file is created when absent','content'=>'text or binary string','encoding'=>'optional: base64'),
@@ -108,6 +108,8 @@ class aiDrivePlugin extends PluginBase {
 				'delete'=>array('path'=>'file or folder to move into AI Drive回收站(勿删); content is never permanently deleted'),
 				'trash'=>array('limit'=>'optional, 1-500; lists this Agent soft-deleted items'),
 				'restoreTrash'=>array('trashID'=>'required recycle-bin record id','overwrite'=>'optional boolean; conflicting current content is also moved to recycle bin'),
+				'shareInfo'=>array('url'=>'share link like https://host/#s/<hash>; a bare hash is also accepted; alias: shareHash','sharePath'=>'optional sub path inside the share; default inspects the shared item itself','password'=>'share password when the link is protected','children'=>'optional boolean; list the folder children of the shared item'),
+				'shareSave'=>array('url'=>'share link like https://host/#s/<hash>; a bare hash is also accepted; alias: shareHash','password'=>'share password when the link is protected','sharePath'=>'optional sub path inside the share; default saves the whole shared item','path'=>'destination folder inside this Agent space; missing folders are created; default 来自分享','overwrite'=>'optional boolean; default false renames on name conflicts instead of replacing existing content'),
 				'versions'=>array('path'=>'optional exact file path','limit'=>'optional, 1-500; old content is stored under AI Drive历史版本(勿删)'),
 				'restore'=>array('versionID'=>'required version record id'),
 				'webdav'=>array('personal'=>'/personal/','department'=>'/department/','method'=>'use PROPFIND for folders; collection GET is not a directory listing')
@@ -124,6 +126,48 @@ class aiDrivePlugin extends PluginBase {
 			if($existing && !$this->recyclePath($agent,$space,$root,$target,$existing))return $this->failure($agent,$action,'cannot recycle conflicting target',$item['originalPath']);
 			$restored=$this->moveArchivedPath($item['storagePath'],$parts['folder'],$parts['name']);if(!$restored)return $this->failure($agent,$action,IO::getLastError('restore from recycle bin failed'),$item['originalPath']);
 			$this->protection()->forgetTrash($id,$agent['agentID']);return $this->success($agent,$action,array('restored'=>true,'trashID'=>$id,'path'=>$item['originalPath']),$item['originalPath']);
+		}
+		if($action==='shareinfo' || $action==='sharesave'){
+			// 转存工作流：Agent 收到网盘分享链接时，先 shareInfo 检查、再 shareSave 转存到自己的空间，
+			// 之后用自有通道（download/WebDAV）取回，而不是控制浏览器下载。
+			$resolved=$this->shareResolve($body);
+			if(_get($resolved,'needPassword',false)) return $this->shareFailure($agent,$action,$resolved);
+			$share=_get($resolved,'share',false);
+			if(!$share) return $this->shareFailure($agent,$action,$resolved);
+			$options=_get($resolved,'options',array());$meta=_get($resolved,'meta',array());
+			$parts=$this->shareSubParts(strval(_get($body,'sharePath',_get($this->in,'sharePath',''))));
+			if($parts===false) return $this->shareFailure($agent,$action,array('error'=>'sharePath is invalid','share'=>$meta));
+			$realPath=$this->shareRealPath($share,$parts);
+			$info=$realPath?IO::infoFullSimple($realPath):false;
+			if(!$info) return $this->shareFailure($agent,$action,array('error'=>'shared path not found inside the share','share'=>$meta));
+			$meta['item']=$this->shareItemInfo($info);
+			if($action==='shareinfo'){
+				if(_get($body,'children',false) && _get($info,'type','')==='folder'){
+					$children=array('folders'=>array(),'files'=>array());$list=IO::listPath($realPath);
+					foreach(_get($list,'folderList',array()) as $item)$children['folders'][]=$this->shareItemInfo($item);
+					foreach(_get($list,'fileList',array()) as $item)$children['files'][]=$this->shareItemInfo($item);
+					$meta['children']=$children;
+				}
+				return $this->success($agent,$action,$meta,strval(_get($resolved,'hash','')));
+			}
+			if(_get($options,'notDownload','')==='1') return $this->shareFailure($agent,$action,array('error'=>'the share owner disabled saving this share','share'=>$meta));
+			$targetRelative=strval(_get($body,'path',_get($this->in,'path','')));
+			if(trim($targetRelative,'/')==='')$targetRelative='来自分享';
+			$folder=$this->ensureFolderPath($root,$targetRelative);
+			if(!$folder) return $this->shareFailure($agent,$action,array('error'=>IO::getLastError('create destination folder failed'),'share'=>$meta));
+			$repeat=_get($body,'overwrite',false)?REPEAT_REPLACE:(_get($info,'type','')==='file'?REPEAT_RENAME:REPEAT_RENAME_FOLDER);
+			// KodBox drivers copy the first path segment only; use the canonical
+			// {source:id} path returned by infoFullSimple, like the share page does.
+			$copySource=strval(_get($info,'path',''));
+			if($copySource==='' || KodIO::sourceID($copySource)===0)$copySource=$realPath;
+			$copied=IO::copy($copySource,$folder,$repeat);
+			if(!$copied) return $this->shareFailure($agent,$action,array('error'=>IO::getLastError('share save failed'),'share'=>$meta));
+			$copiedInfo=IO::infoFull($copied);
+			if(!$copiedInfo) return $this->shareFailure($agent,$action,array('error'=>'share save verification failed','share'=>$meta));
+			$meta['saved']=true;
+			$meta['item']=$this->shareItemInfo($copiedInfo);
+			$meta['to']=$this->relativePath($folder,$root);
+			return $this->success($agent,$action,$meta,strval(_get($resolved,'hash','')));
 		}
 
 		$relativeInput=_get($body,'path',_get($this->in,'path',''));
@@ -348,6 +392,72 @@ class aiDrivePlugin extends PluginBase {
 			array_unshift($names,$item['name']);$sourceID=intval($item['parentID']);
 		}
 		return '/'.implode('/',$names);
+	}
+	/** Extract the hash from a share url like https://host/#s/<hash>, or accept a bare hash. KodBox hashes may contain "-" and "_". */
+	private function shareLinkHash($body){
+		$hash=trim(strval(_get($body,'shareHash',_get($this->in,'shareHash',''))));
+		if($hash===''){
+			$url=trim(strval(_get($body,'url',_get($this->in,'url',''))));
+			if(preg_match('~[#?&]s/([0-9A-Za-z_-]+)~',$url,$match))$hash=$match[1];
+			else if(preg_match('/^([0-9A-Za-z_-]+)$/',$url,$match))$hash=$match[1];
+		}
+		return preg_replace('/[^0-9A-Za-z_-]/','',$hash);
+	}
+	/** Validate a share link the way the KodBox share page does, without session side effects. */
+	private function shareResolve($body){
+		$hash=$this->shareLinkHash($body);
+		if(!$hash)return array('error'=>'shareHash or url is required; a share link looks like https://host/#s/<hash>');
+		$share=Model('Share')->getInfoByHash($hash);
+		if(!$share || strval(_get($share,'isLink',''))!=='1')return array('error'=>'share link not found');
+		$options=_get($share,'options',array());if(!is_array($options))$options=array();
+		$source=_get($share,'sourceInfo',array());
+		if(!_get($source,'path','') || intval(_get($source,'isDelete',0))===1)return array('error'=>'shared content was deleted by its owner');
+		$meta=$this->shareMeta($share,$options,false);
+		if(intval(_get($share,'timeTo',0))>0 && intval($share['timeTo'])<time())return array('error'=>'share link has expired','share'=>$meta);
+		if(intval(_get($options,'downloadNumber',0))>0 && intval($options['downloadNumber'])<=intval(_get($share,'numDownload',0)))return array('error'=>'share download limit has been reached','share'=>$meta);
+		if(strval(_get($share,'password',''))!==''){
+			$password=strval(_get($body,'password',_get($this->in,'password','')));
+			if($password==='' || $password!==strval($share['password']))return array('error'=>$password===''?'share password required':'share password is incorrect','needPassword'=>true,'share'=>$meta);
+		}
+		return array('share'=>$share,'options'=>$options,'meta'=>$this->shareMeta($share,$options,true),'hash'=>$hash);
+	}
+	private function shareMeta($share,$options,$passwordOk){
+		$owner=Model('User')->getInfoSimpleOuter(intval(_get($share,'userID',0)));
+		return array(
+			'shareHash'=>strval(_get($share,'shareHash','')),'shareID'=>intval(_get($share,'shareID',0)),
+			'title'=>strval(_get($share,'title','')),'owner'=>strval(_get($owner,'name','')),
+			'expireTime'=>intval(_get($share,'timeTo',0)),
+			'passwordRequired'=>strval(_get($share,'password',''))!=='','passwordOk'=>(bool)$passwordOk,
+			'saveAllowed'=>_get($options,'notDownload','')!=='1',
+			'downloadLimit'=>intval(_get($options,'downloadNumber',0)),'numDownload'=>intval(_get($share,'numDownload',0))
+		);
+	}
+	/** Sub path inside a share; returns false on traversal, array of parts otherwise. */
+	private function shareSubParts($relative){
+		$relative=str_replace('\\','/',rawurldecode(strval($relative)));
+		if(strpos($relative,"\0")!==false)return false;
+		$parts=array();
+		foreach(explode('/',trim($relative,'/')) as $part){
+			if($part===''||$part==='.')continue;
+			if($part==='..')return false;
+			$parts[]=$part;
+		}
+		return $parts;
+	}
+	private function shareRealPath($share,$parts){
+		$source=_get($share,'sourceInfo',array());$rootSource=rtrim(strval(_get($source,'path','')),'/');
+		if($rootSource==='')return false;
+		return $parts?$rootSource.'/'.implode('/',$parts):$rootSource;
+	}
+	/** Share items describe the shared content only; owner-side paths must never leak. */
+	private function shareItemInfo($info){return array(
+		'name'=>strval(_get($info,'name','')),'type'=>strval(_get($info,'type','')),'ext'=>strval(_get($info,'ext','')),
+		'size'=>intval(_get($info,'size',0)),'createTime'=>intval(_get($info,'createTime',0)),'modifyTime'=>intval(_get($info,'modifyTime',0))
+	);}
+	private function shareFailure($agent,$action,$payload){
+		$this->store()->audit($agent,$action,'failed',$this->auditDetail(strval(_get($payload,'error',''))));
+		$this->store()->idempotentPut($agent['agentID'],$this->requestID,$action,false,$payload);
+		show_json($payload,false);
 	}
 	private function safeName($name){$name=trim(str_replace(array('\\','/',':','*','?','"','<','>','|',"\r","\n"),'_',strval($name)));return in_array($name,array('','.','..'))?'':$name;}
 	private function renameTarget($body){
