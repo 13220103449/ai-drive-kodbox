@@ -26,6 +26,6 @@ This zero-dependency Node.js adapter exposes an Agent's AI Drive account as MCP 
 }
 ```
 
-Each Agent should receive its own token and KodBox account. The MCP tools cover list, stat, text read/write, upload, download, mkdir, rename, move, copy, delete and public share.
+Each Agent should receive its own token and KodBox account. The MCP tools cover list, stat, text read/write, upload, download, mkdir, rename, move, copy, delete, public share, share link inspection (`ai_drive_share_info`) and share transfer (`ai_drive_share_save`): when given a share link, save it into the Agent's own drive first, then download through the Agent's own channel instead of driving a browser.
 
 Writes and uploads create missing destination folders, then automatically call `stat` and download the stored file again to compare byte count and SHA-256. A mismatch or failed read-back returns a tool error instead of reporting success. Downloads also check the returned file size against `stat` before saving locally. `ai_drive_delete` moves content into the recoverable AI Drive recycle bin; it does not permanently delete data.

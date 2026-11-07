@@ -154,6 +154,8 @@ Bearer Token: <AGENT_TOKEN>
 推荐工作目录: /我的文档/<你的 Agent 名称>/
 
 首次连接先调用 whoami 和 capabilities。每次写入或上传后必须用 stat 加 read/download 验证大小与 SHA-256；只有 HTTP 2xx 且 JSON code=true 才能记录为成功。目录用 list，文件用 read/download；rename 只使用 newName，跨目录使用 move。
+
+收到本网盘的分享链接（https://主机/#s/<hash>）时，必须先用 shareSave 转存到自己的空间（密码分享带 password，目标目录用 path），再用自有通道（download/WebDAV）取回文件；不要控制浏览器下载。链接内容可先用 shareInfo 查看。
 ```
 
 ## 7. 发布后的自动验收
