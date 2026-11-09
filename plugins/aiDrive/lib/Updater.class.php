@@ -1,6 +1,6 @@
 <?php
 
-/** Signed-by-checksum updater for AI Drive GitHub releases. */
+/** Checksum-verified updater; a checksum is not a publisher signature. */
 class AiDriveUpdater {
 	private $plugin;
 	private $repo;
@@ -22,7 +22,7 @@ class AiDriveUpdater {
 		if(!class_exists('ZipArchive')) throw new Exception('PHP zip extension is required');
 		mk_dir(TEMP_FILES);$lockPath=TEMP_FILES.'aidrive-update.lock';$lock=fopen($lockPath,'c+');
 		if(!$lock || !flock($lock,LOCK_EX|LOCK_NB)) throw new Exception('Another AI Drive update is running');
-		$work=TEMP_FILES.'aidrive-update-'.date('YmdHis').'-'.rand_string(6).'/';mk_dir($work);$current=$this->currentVersion();$latest='';$backup='';
+		$work=TEMP_FILES.'aidrive-update-'.date('YmdHis').'-'.rand_string(6).'/';mk_dir($work);$current=$this->currentVersion();$latest='';$backup='';$transaction=null;$maintenanceMarker='';
 		try{
 			$release=$this->release();$latest=ltrim(strval(_get($release,'tag_name','')),'vV');
 			if(!version_compare($latest,$current,'>')) return array('updated'=>false,'version'=>$current,'message'=>'already latest');
@@ -34,31 +34,45 @@ class AiDriveUpdater {
 			$package=$stage.'plugins/aiDrive/package.json';if(!is_file($package)) throw new Exception('Update package does not contain AI Drive plugin');
 			$meta=json_decode(file_get_contents($package),true);if(strval(_get($meta,'version',''))!==$latest) throw new Exception('Release tag and package version do not match');
 			$target=PLUGIN_DIR.'aiDrive/';if(!path_writeable($target)) throw new Exception('AI Drive plugin directory is not writable');
+			$this->validatePhpTree($stage.'plugins/aiDrive/');
+			$webdavPatch=$stage.'plugins/webdav/php/webdavServerKod.class.php';if(is_file($webdavPatch))$this->validatePhpTree($stage.'plugins/webdav/php/');
+			$privateDirectory=trim(strval(_get($this->plugin->getConfig(),'privateBackupDirectory','')));if(!$privateDirectory)throw new RuntimeException('Configure private application backups before upgrading');
+			$marker=DATA_PATH.'ai-drive/maintenance.flag';$handle=@fopen($marker,'x');if(!$handle)throw new RuntimeException('Application maintenance is already active');fwrite($handle,strval(time()));fclose($handle);$maintenanceMarker=$marker;
+			include_once(__DIR__.'/ApplicationBackup.class.php');$applicationBackup=new AiDriveApplicationBackup(BASIC_PATH,$privateDirectory);$applicationSnapshot=$applicationBackup->create();
 			$backup=DATA_PATH.'update-backup/aiDrive-'.$current.'-'.date('YmdHis').'/';mk_dir($backup);
-			if(!$this->copyTree($target,$backup)) throw new Exception('Cannot create update backup');
-			try{$this->copyTree($stage.'plugins/aiDrive/',$target,true);}catch(Exception $error){$this->copyTree($backup,$target,true);throw $error;}
-			$webdavPatch=$stage.'plugins/webdav/php/webdavServerKod.class.php';
+			include_once(__DIR__.'/UpdateTransaction.class.php');$transaction=new AiDriveUpdateTransaction($backup);
+			$transaction->replaceTree($stage.'plugins/aiDrive/',$target,'aiDrive');
 			if(is_file($webdavPatch)){
-				$webdavTarget=PLUGIN_DIR.'webdav/php/webdavServerKod.class.php';
-				if(!is_file($webdavTarget) || !is_writable($webdavTarget) || !@copy($webdavPatch,$webdavTarget)) throw new Exception('Cannot install approved WebDAV compatibility patch');
+				$transaction->replaceTree($stage.'plugins/webdav/php/',PLUGIN_DIR.'webdav/php/','webdav');
 			}
-			$installed=$this->currentVersion();if($installed!==$latest || !$this->healthCheck()){$this->copyTree($backup,$target,true);throw new Exception('Installed version health check failed; backup restored');}
-			$this->record($current,$installed,'success',$backup,'SHA-256 verified; health check passed');
-			return array('updated'=>true,'version'=>$installed,'previousVersion'=>$current,'backup'=>str_replace(BASIC_PATH,'',$backup));
-		}catch(Exception $error){$this->record($current,$latest?$latest:$current,'failed',$backup,$error->getMessage());throw $error;
-		}finally{if(is_dir($work)) del_dir(rtrim($work,'/'));flock($lock,LOCK_UN);fclose($lock);}
+			$installed=$this->currentVersion();if($installed!==$latest || !$this->healthCheck())throw new Exception('Installed version structural health check failed');
+			$this->runAcceptance();
+			$this->record($current,$installed,'success',$backup,'SHA-256, PHP syntax and storage lifecycle acceptance passed');
+			return array('updated'=>true,'version'=>$installed,'previousVersion'=>$current,'backup'=>str_replace(BASIC_PATH,'',$backup),'applicationBackup'=>$applicationSnapshot,'acceptance'=>'internal storage lifecycle passed; external client verification also recommended');
+		}catch(Throwable $error){if($transaction){try{$transaction->rollback();}catch(Throwable $rollbackError){$this->record($current,$latest?$latest:$current,'rollback_failed',$backup,'Manual code recovery required');throw new RuntimeException('Update failed and automatic code recovery failed; preserve backup and contact administrator');}}$this->record($current,$latest?$latest:$current,'failed',$backup,$error->getMessage());throw $error;
+		}finally{if($maintenanceMarker && is_file($maintenanceMarker))unlink($maintenanceMarker);if(is_dir($work)) del_dir(rtrim($work,'/'));flock($lock,LOCK_UN);fclose($lock);}
 	}
 	public function history($limit=30){$list=Model('plugin_ai_drive_update')->order('id desc')->limit(min(max(intval($limit),1),100))->select();return $list?$list:array();}
 	public function rollback($id){
 		$item=Model('plugin_ai_drive_update')->where(array('id'=>intval($id),'status'=>'success'))->find();if(!$item)throw new Exception('Update history entry was not found');
 		$backup=strval($item['backupPath']);if(!$backup || !is_dir($backup))throw new Exception('Update backup is unavailable');$from=$this->currentVersion();$target=PLUGIN_DIR.'aiDrive/';
-		$currentBackup=DATA_PATH.'update-backup/aiDrive-'.$from.'-before-rollback-'.date('YmdHis').'/';if(!$this->copyTree($target,$currentBackup))throw new Exception('Cannot create rollback safety backup');
-		try{$this->copyTree($backup,$target,true);if(!$this->healthCheck())throw new Exception('Rollback health check failed');}catch(Exception $error){$this->copyTree($currentBackup,$target,true);throw $error;}
+		$currentBackup=DATA_PATH.'update-backup/aiDrive-'.$from.'-before-rollback-'.date('YmdHis').'/';include_once(__DIR__.'/UpdateTransaction.class.php');$transaction=new AiDriveUpdateTransaction($currentBackup);
+		$source=is_file($backup.'/transaction.json')?$backup.'/aiDrive/':$backup;if(!is_file($source.'app.php'))throw new RuntimeException('Selected code backup is incomplete');
+		try{$transaction->replaceTree($source,$target,'aiDrive');if(is_dir($backup.'/webdav/'))$transaction->replaceTree($backup.'/webdav/',PLUGIN_DIR.'webdav/php/','webdav');if(!$this->healthCheck())throw new Exception('Rollback health check failed');$this->runAcceptance();}catch(Throwable $error){$transaction->rollback();throw $error;}
 		$to=$this->currentVersion();$this->record($from,$to,'rollback',$currentBackup,'Rollback completed and health check passed');return array('rolledBack'=>true,'fromVersion'=>$from,'version'=>$to,'safetyBackup'=>str_replace(BASIC_PATH,'',$currentBackup));
 	}
 	private function healthCheck(){
 		$package=$this->plugin->pluginPath.'package.json';$app=$this->plugin->pluginPath.'app.php';$store=$this->plugin->pluginPath.'lib/AgentStore.class.php';if(!is_file($package)||!is_file($app)||!is_file($store))return false;
 		$meta=json_decode(file_get_contents($package),true);return is_array($meta)&&preg_match('/^\d+\.\d+\.\d+/',strval(_get($meta,'version','')));
+	}
+	private function validatePhpTree($directory){$iterator=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory,FilesystemIterator::SKIP_DOTS));foreach($iterator as $entry){if($entry->isFile()&&strtolower($entry->getExtension())==='php'){try{token_get_all(file_get_contents($entry->getPathname()),TOKEN_PARSE);}catch(ParseError $e){throw new RuntimeException('Update PHP syntax check failed: '.$entry->getFilename());}}}}
+	private function runAcceptance(){
+		if(!function_exists('proc_open'))throw new RuntimeException('CLI acceptance is unavailable; refusing an unverified upgrade');
+		$cli=PHP_SAPI==='cli'?PHP_BINARY:dirname(dirname(PHP_BINARY)).'/bin/php';if(!is_executable($cli))throw new RuntimeException('PHP CLI is unavailable; refusing an unverified upgrade');
+		$script=PLUGIN_DIR.'aiDrive/bin/upgrade-check.php';if(!is_file($script))throw new RuntimeException('Update lacks storage acceptance checker');
+		$descriptors=array(0=>array('pipe','r'),1=>array('pipe','w'),2=>array('pipe','w'));
+		$process=proc_open(array($cli,$script),$descriptors,$pipes);if(!is_resource($process))throw new RuntimeException('Cannot launch storage acceptance');fclose($pipes[0]);$output=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$status=proc_close($process);$result=json_decode(trim($output),true);
+		if($status!==0||!is_array($result)||empty($result['ok']))throw new RuntimeException('Post-upgrade storage acceptance failed; code will be rolled back');
 	}
 	private function record($from,$to,$status,$backup,$detail){Model('plugin_ai_drive_update')->setDataAuto(false);Model('plugin_ai_drive_update')->add(array('fromVersion'=>$from,'toVersion'=>$to,'status'=>$status,'backupPath'=>$backup,'detail'=>mb_substr($detail,0,1000),'createTime'=>time()));}
 

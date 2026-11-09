@@ -11,15 +11,15 @@ class AiDriveDataProtection {
 	public function snapshot($agent,$space,$relative,$absolute,$operation,$remoteFolder=''){
 		$info=IO::infoFull($absolute);if(!$info || _get($info,'type')!=='file')return false;
 		$size=max(0,intval(_get($info,'size',0)));$sha256='';$blobPath='';$stored='';
+		if($size<=$this->maxHashBytes){$content=$this->readExact($absolute,$size);if($content===false)return false;$sha256=hash('sha256',$content);}
 		if($remoteFolder){
 			$stored=IO::copy($absolute,$remoteFolder,REPEAT_REPLACE);if(!$stored)return false;
 			$original=preg_replace('/[\\\\\/:*?"<>|\r\n]+/u','_',strval(_get($info,'name','file')));$original=mb_substr($original,0,160);
 			$name='v-'.date('Ymd-His').'-'.bin2hex(random_bytes(4)).'-'.$original;
 			$renamed=IO::rename($stored,$name);if(!$renamed){IO::remove($stored,false);return false;}$stored=$renamed;
 			$blobPath='io:'.$stored;
-			if($size<=$this->maxHashBytes){$content=IO::fileSubstr($absolute,0,$size);if($content!==false)$sha256=hash('sha256',$content);}
 		}else{
-			if($size>$this->maxHashBytes)return false;$content=IO::fileSubstr($absolute,0,$size);if($content===false)return false;
+			if($size>$this->maxHashBytes)return false;
 			$folder=DATA_PATH.'ai-drive/versions/'.date('Y/m/');mk_dir($folder);$name=bin2hex(random_bytes(16)).'.bin';$file=$folder.$name;
 			if(file_put_contents($file,$content,LOCK_EX)===false)return false;$sha256=hash('sha256',$content);
 			$blobPath=str_replace('\\','/',substr($file,strlen(DATA_PATH)));
@@ -29,6 +29,7 @@ class AiDriveDataProtection {
 		Model($this->table)->setDataAuto(false);$id=Model($this->table)->add($data);
 		if(!$id){if($stored)IO::remove($stored,false);elseif(isset($file))@unlink($file);return false;}$data['id']=intval($id);return $data;
 	}
+	private function readExact($path,$size){if($size===0)return '';for($attempt=0;$attempt<3;$attempt++){$bytes=IO::fileSubstr($path,0,$size);if(is_string($bytes)&&strlen($bytes)===$size)return $bytes;}return false;}
 	public function listVersions($agentID='',$limit=100,$path=''){
 		$where=array();if($agentID!=='')$where['agentID']=$agentID;if($path!=='')$where['path']=$path;
 		$model=Model($this->table);if($where)$model=$model->where($where);
