@@ -9,10 +9,39 @@ class AiDriveAgentStore {
 
 	public function initTable(){
 		$tables=Model()->db()->getTables();
-		if(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_trash',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables)) return;
-		$file=__DIR__.'/data/schema.mysql.sql';
-		if(stristr($GLOBALS['config']['database']['DB_TYPE'],'sqlite')) $file=__DIR__.'/data/schema.sqlite.sql';
-		foreach(sqlSplit(file_get_contents($file)) as $sql) Model()->db()->execute($sql);
+		if(!(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_trash',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables))){
+			$file=__DIR__.'/data/schema.mysql.sql';
+			if(stristr($GLOBALS['config']['database']['DB_TYPE'],'sqlite')) $file=__DIR__.'/data/schema.sqlite.sql';
+			foreach(sqlSplit(file_get_contents($file)) as $sql) Model()->db()->execute($sql);
+		}
+		$this->ensureColumn($this->agentTable,'homeDir',"varchar(200) NOT NULL DEFAULT ''");
+	}
+
+	/** Additive schema migration; safe to call on every boot. */
+	private function ensureColumn($table,$column,$definition){
+		$db=Model()->db();
+		if(!method_exists($db,'getFields')) return; // stub/test environment: no real schema to migrate
+		$fields=$db->getFields($table);
+		if(is_array($fields)&&(array_key_exists($column,$fields)||in_array($column,array_keys($fields)))) return;
+		try{$db->execute("ALTER TABLE `".$table."` ADD COLUMN ".$column." ".$definition);}
+		catch(Throwable $error){
+			if(stripos($error->getMessage(),'duplicate')===false&&stripos($error->getMessage(),'1060')===false&&stripos($error->getMessage(),'already exists')===false) throw $error;
+		}
+	}
+
+	/** Configured shared KodBox account every Agent can call home; 0 means not configured. */
+	public function sharedUserID(){
+		$config=Model('Plugin')->getConfig('aiDrive');
+		$id=intval(_get(is_array($config)?$config:array(),'sharedUserID',0));
+		if($id<=0) return 0;
+		$user=Model('User')->getInfoSimple($id);
+		return ($user&&intval(_get($user,'status',0))===1)?$id:0;
+	}
+
+	public function sharedAccountStatus(){
+		$id=$this->sharedUserID();
+		$user=$id?Model('User')->getInfoSimple($id):false;
+		return array('configured'=>$id,'exists'=>!!$user,'username'=>strval(_get($user,'name','')),'nickName'=>strval(_get($user,'nickName','')));
 	}
 
 	/** Create/reuse the first-level department that contains machine accounts. */
@@ -54,7 +83,7 @@ class AiDriveAgentStore {
 	}
 
 	public function listAgents(){
-		$this->initTable();$list=Model($this->agentTable)->field('agentID,name,userID,tokenHash,status,lastUsedAt,createdAt,updatedAt')->order('id desc')->select();
+		$this->initTable();$list=Model($this->agentTable)->field('agentID,name,userID,homeDir,tokenHash,status,lastUsedAt,createdAt,updatedAt')->order('id desc')->select();
 		if(!$list)return array();
 		foreach($list as &$item){$user=Model('User')->getInfoSimple($item['userID']);$item['username']=_get($user,'name','');$item['nickName']=_get($user,'nickName','');
 			$item['tokenFingerprint']=substr($item['tokenHash'],0,12);unset($item['tokenHash']);
@@ -113,10 +142,10 @@ class AiDriveAgentStore {
 			"请把连接信息保存到私密凭据存储，不要在回复、网盘文件或公开仓库中展示密码或 Token。首次连接先调用 whoami 和 capabilities。只有 HTTP 2xx 且 JSON code=true 才算成功。写入或上传重要文件后，必须用 stat 对比大小，再用 read/download 取回并核对 SHA-256。目录使用 list；文件使用 read/download；rename 只使用 newName；跨目录使用 move。私有文件默认存入 personal，需要与其他 Agent 协作的文件存入 department。你可以自行上传、下载、覆盖、移动、复制、重命名、删除和分享文件，无需再次申请人工审批。delete 为软删除，内容会进入挂载盘回收站；使用 trash 查看、restoreTrash 恢复，Agent 没有永久删除接口。";
 	}
 
-	public function createAgent($name,$userID){
+	public function createAgent($name,$userID,$homeDir=''){
 		$this->initTable();$user=Model('User')->getInfoSimple($userID);if(!$user) show_json('KodBox user does not exist',false);
 		$token='aidv_'.bin2hex(random_bytes(32));$now=time();$data=array('agentID'=>'agent_'.bin2hex(random_bytes(12)),'name'=>mb_substr($name,0,120),
-			'userID'=>$userID,'tokenHash'=>hash('sha256',$token),'status'=>1,'lastUsedAt'=>0,'createdAt'=>$now,'updatedAt'=>$now);
+			'userID'=>$userID,'homeDir'=>mb_substr(trim(strval($homeDir)),0,200),'tokenHash'=>hash('sha256',$token),'status'=>1,'lastUsedAt'=>0,'createdAt'=>$now,'updatedAt'=>$now);
 		Model($this->agentTable)->setDataAuto(false);Model($this->agentTable)->add($data);unset($data['tokenHash']);$data['token']=$token;$data['tokenShownOnce']=true;return $data;
 	}
 	public function revokeAgent($agentID){$this->initTable();$model=Model($this->agentTable);$model->setDataAuto(false);return !!$model->where(array('agentID'=>$agentID))->save(array('status'=>0,'updatedAt'=>time()));}

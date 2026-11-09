@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS "plugin_ai_drive_agent" (
   "agentID" varchar(64) NOT NULL UNIQUE,
   "name" varchar(120) NOT NULL,
   "userID" integer NOT NULL,
+  "homeDir" varchar(200) NOT NULL DEFAULT '',
   "tokenHash" char(64) NOT NULL UNIQUE,
   "status" integer NOT NULL DEFAULT 1,
   "lastUsedAt" integer NOT NULL DEFAULT 0,

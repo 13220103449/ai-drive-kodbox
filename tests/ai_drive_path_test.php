@@ -122,4 +122,17 @@ assert_same(true, call_private($plugin, 'folderIsEmpty', array($copyTarget['fold
 assert_same(true, call_private($plugin, 'deletePath', array($copyTarget['folder'])), 'empty Source folder must be deleted when the IO driver refuses it');
 assert_same(false, IO::infoFull($copyTarget['folder']), 'deleted empty folder must no longer exist');
 
+// Shared-account mode (v0.8.0): the Agent root becomes <shared personal>/<homeDir>/.
+// Every path helper must treat that nested root exactly like a top-level one.
+$sharedModeRoot = rtrim(call_private($plugin, 'ensureFolderPath', array(KodIO::make(2), 'ZCode')), '/') . '/';
+$createdInHome = call_private($plugin, 'copyToTarget', array(KodIO::make(4), $sharedModeRoot, 'big1-under-home.json'));
+assert_same('big1-under-home.json', IO::infoFull($createdInHome)['name'], 'shared-home copy must land inside the homeDir root');
+assert_same('/big1-under-home.json', call_private($plugin, 'relativePath', array($createdInHome, $sharedModeRoot)), 'shared-home listing must be relative to the homeDir root');
+$parentName = FakeSourceStore::$rows[FakeSourceStore::$rows[KodIO::sourceID($createdInHome)]['parentID']]['name'];
+assert_same('ZCode', $parentName, 'shared-home file must physically live under the homeDir folder');
+assert_same($sharedModeRoot, call_private($plugin, 'agentPath', array($sharedModeRoot, '/')), 'shared-home root itself must resolve to itself');
+$traversalRejected = false;
+try {call_private($plugin, 'agentPath', array($sharedModeRoot, '../我的文档'));} catch (Throwable $error) {$traversalRejected = true;}
+assert_same(true, $traversalRejected, 'shared-home must reject path traversal attempts');
+
 echo "AI Drive strict path tests passed\n";

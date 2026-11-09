@@ -1,18 +1,19 @@
 <?php
-$temp=sys_get_temp_dir().'/aidrive-dav-'.bin2hex(random_bytes(6)).'/';
-mkdir($temp.'aiDrive/lib',0777,true);mkdir($temp.'cloud/nested',0777,true);
-copy(__DIR__.'/../plugins/aiDrive/lib/StorageDrivers.class.php',$temp.'aiDrive/lib/StorageDrivers.class.php');
-file_put_contents($temp.'cloud/nested/pathDriverBaidu.class.php',"<?php class PathDriverBaidu {}\n");
-define('PLUGIN_DIR',$temp);
-class HttpHeader {public static function method(){return 'GET';}}
-class webdavServer {public static function response($result){if($result!==true)throw new RuntimeException('bad DAV result');}}
-require __DIR__.'/../plugins/webdav/php/webdavServerKod.class.php';
-class TestDav extends webdavServerKod {
-	public $davPre='/dav/';public $authenticated=false;
-	public function __construct(){}
-	public function checkUser(){if(class_exists('PathDriverBaidu',false))throw new RuntimeException('driver loaded before authentication');$this->authenticated=true;}
-	public function initPath($prefix){if(!$this->authenticated || !class_exists('PathDriverBaidu',false))throw new RuntimeException('mounted driver missing before path resolution');}
-	public function httpGET(){return true;}
+/**
+ * v0.8.0 WebDAV integration consistency test.
+ *
+ * Since 0.7.0 the WebDAV integration is a runtime alias patch (installed by
+ * AiDriveAgentStore::installWebdavAliases) instead of the hand-patched driver
+ * bootstrap used before. Mounted storage drivers are loaded by the official
+ * WebDAV plugin route itself and by the Agent API (loadOptionalStorageDrivers),
+ * so the class file must carry the alias patch and must NOT reintroduce the
+ * hand-patched AiDriveStorageDrivers bootstrap inside run().
+ */
+$source=file_get_contents(__DIR__.'/../plugins/webdav/php/webdavServerKod.class.php');
+if($source===false) throw new RuntimeException('webdavServerKod.class.php is missing');
+if(strpos($source,'AI Drive stable WebDAV aliases')===false) throw new RuntimeException('AI Drive stable WebDAV alias patch missing; run aiDrive webdav/enableWebdav once');
+if(strpos($source,'AiDriveStorageDrivers::load')!==false) throw new RuntimeException('hand-patched driver bootstrap must not return into webdavServerKod; drivers load via the plugin route and the Agent API');
+foreach(array('$this->checkUser()','$this->initPath(') as $needle){
+	if(strpos($source,$needle)===false) throw new RuntimeException('webdavServerKod run() lost '.$needle);
 }
-try{(new TestDav())->run();echo "WebDAV authenticated mounted driver bootstrap test passed\n";}
-finally{foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($temp,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST) as $item){$item->isDir()?rmdir($item->getPathname()):unlink($item->getPathname());}rmdir($temp);}
+echo "WebDAV alias patch consistency test passed\n";

@@ -25,9 +25,55 @@ class aiDrivePlugin extends PluginBase {
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.7.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths','share-transfer')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.8.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths','share-transfer','shared-agent-home-directories','storage-acceptance-check')));}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
+
+	/**
+	 * Storage lifecycle acceptance used by bin/upgrade-check.php after every update.
+	 * Exercises the KodBox IO layer end to end (mkdir/mkfile/stat/read/rename/copy/move)
+	 * against a real personal space, then removes the sandbox. Throws on any failure.
+	 */
+	public function runStorageAcceptance(){
+		$started=microtime(true);
+		$shared=$this->store()->sharedAccountStatus();
+		$userID=intval(_get($shared,'configured',0));
+		if($userID<=0) $userID=1;
+		KodUser::init($userID);
+		// The shared account's space may live on a mounted driver; load the optional
+		// drivers exactly like api() does before touching IO.
+		$this->loadOptionalStorageDrivers();
+		$userFull=Model('User')->getInfoFull($userID);
+		$baseSourceID=intval(_get($userFull,'sourceInfo.sourceID',0));
+		if($baseSourceID<=0) throw new RuntimeException('acceptance: target user has no personal space');
+		$root=rtrim(KodIO::make($baseSourceID),'/').'/';
+		$sandbox=$this->ensureFolderPath($root,'AI Drive验收(勿删)/acceptance-'.date('YmdHis').'-'.bin2hex(random_bytes(4)),true);
+		if(!$sandbox) throw new RuntimeException('acceptance: cannot create sandbox folder');
+		$content='ai-drive storage acceptance '.date('c')."\n".str_repeat('0123456789',200);
+		$checks=array();
+		try{
+			$file=IO::mkfile($sandbox.'/sample.txt',$content,REPEAT_REPLACE);
+			$checks['mkfile']=$file?true:false;
+			$info=$file?IO::infoFull($file):false;
+			$checks['stat']=!!($info&&intval($info['size'])===strlen($content));
+			$read=($file&&$info)?IO::fileSubstr($file,0,intval($info['size'])):null;
+			$checks['read']=is_string($read)&&hash_equals(hash('sha256',$content),hash('sha256',$read));
+			$renamed=$file?IO::rename($file,'sample-renamed.txt'):false;
+			$checks['rename']=!!$renamed;
+			$copied=$renamed?IO::copy($renamed,$sandbox,REPEAT_REPLACE):false;
+			$checks['copy']=!!$copied;
+			$nested=IO::mkdir($sandbox.'/nested',REPEAT_SKIP);
+			$moved=$renamed?IO::move($renamed,$nested,REPEAT_REPLACE):false;
+			$checks['move']=!!$moved;
+			$movedInfo=$moved?IO::infoFull($moved):false;
+			$checks['moveVerify']=!!($movedInfo&&intval($movedInfo['size'])===strlen($content));
+		}finally{
+			$checks['cleanup']=IO::remove($sandbox,false)?true:!IO::infoFull($sandbox);
+		}
+		foreach($checks as $name=>$passed){if(!$passed) throw new RuntimeException('storage acceptance failed at '.$name.': '.json_encode($checks,JSON_UNESCAPED_UNICODE));}
+		return array('ok'=>true,'checks'=>$checks,'userID'=>$userID,'elapsedMs'=>intval((microtime(true)-$started)*1000));
+	}
+
 	public function updateCheck(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->check());}catch(Exception $error){show_json($error->getMessage(),false);}}
 	public function updateInstall(){KodUser::checkRoot();$this->store()->initTable();try{show_json($this->updater()->install());}catch(Exception $error){show_json($error->getMessage(),false);}}
 	public function updateHistory(){KodUser::checkRoot();$this->store()->initTable();show_json($this->updater()->history(intval(_get($this->in,'limit',30))));}
@@ -45,10 +91,17 @@ class aiDrivePlugin extends PluginBase {
 			$name=trim(_get($body,'name',''));if(!$name) show_json('name is required',false);
 			$userID=intval(_get($body,'userID',0));
 			if($userID) show_json($this->store()->createAgent($name,$userID));
-			show_json($this->store()->createAgentAccount(array(
-				'name'=>$name,'username'=>trim(_get($body,'username','')),'password'=>_get($body,'password',''),
-				'sizeMax'=>intval(_get($body,'sizeMax',0))
-			)));
+			if(!empty($body['dedicated'])){
+				// Legacy mode: burn one KodBox user account. Only for agents that truly need their own account.
+				show_json($this->store()->createAgentAccount(array(
+					'name'=>$name,'username'=>trim(_get($body,'username','')),'password'=>_get($body,'password',''),
+					'sizeMax'=>intval(_get($body,'sizeMax',0))
+				)));
+			}
+			// Default since v0.8.0: shared-account mode; the Agent gets a home subfolder instead of a KodBox user.
+			$sharedID=$this->store()->sharedUserID();
+			if(!$sharedID) show_json('shared account is not configured (plugin config sharedUserID); pass dedicated=true to create a standalone account',false);
+			show_json($this->store()->createAgent($name,$sharedID,$name));
 		}
 		if($method==='DELETE'){
 			$id=trim(_get($body,'agentID',''));if(!$id) show_json('agentID is required',false);
@@ -87,10 +140,18 @@ class aiDrivePlugin extends PluginBase {
 			$rootSourceID=$department['sourceID'];$space='department';
 		}else{$space='personal';}
 		$root=rtrim(KodIO::make($rootSourceID),'/').'/';
+		// Shared-account mode (v0.8.0): the Agent lives in a subfolder of the shared account's
+		// personal space instead of owning a KodBox user. Every action resolves paths through
+		// $root, so swapping the root keeps the whole API surface unchanged for the Agent.
+		if($space==='personal' && trim(strval(_get($agent,'homeDir','')))!==''){
+			$home=$this->ensureFolderPath($root,trim(strval($agent['homeDir'])));
+			if(!$home) show_json('cannot prepare Agent home folder: '.IO::getLastError('unknown error'),false);
+			$root=rtrim($home,'/').'/';
+		}
 
 		if($action==='whoami') return $this->success($agent,$action,array(
 			'agentID'=>$agent['agentID'],'name'=>$agent['name'],'userID'=>intval($agent['userID']),
-				'username'=>$user['name'],'nickName'=>$user['nickName'],'home'=>'/','space'=>$space,
+				'username'=>$user['name'],'nickName'=>$user['nickName'],'homeDir'=>strval(_get($agent,'homeDir','')),'home'=>'/','space'=>$space,
 			'quota'=>array('used'=>intval($user['sizeUse']),'max'=>intval($user['sizeMax'])),'permissions'=>array('*')
 		));
 		if($action==='capabilities'){return $this->success($agent,$action,array(
