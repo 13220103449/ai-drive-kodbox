@@ -9,9 +9,11 @@ class AiDriveAgentStore {
 
 	public function initTable(){
 		$tables=Model()->db()->getTables();
-		if(!(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_trash',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables))){
-			$file=__DIR__.'/data/schema.mysql.sql';
-			if(stristr($GLOBALS['config']['database']['DB_TYPE'],'sqlite')) $file=__DIR__.'/data/schema.sqlite.sql';
+		if(!(in_array($this->agentTable,$tables)&&in_array($this->auditTable,$tables)&&in_array($this->tokenTable,$tables)&&in_array('plugin_ai_drive_version',$tables)&&in_array('plugin_ai_drive_trash',$tables)&&in_array('plugin_ai_drive_update',$tables)&&in_array('plugin_ai_drive_request',$tables)&&in_array('plugin_ai_drive_mirror',$tables))){
+			// Probe the live dialect: CLI entry points may not carry DB_TYPE config.
+			$isSqlite=false;
+			try{$probe=Model()->db()->query("SELECT name FROM sqlite_master LIMIT 1");$isSqlite=is_array($probe);}catch(Throwable $error){$isSqlite=false;}
+			$file=$isSqlite?__DIR__.'/data/schema.sqlite.sql':__DIR__.'/data/schema.mysql.sql';
 			foreach(sqlSplit(file_get_contents($file)) as $sql) Model()->db()->execute($sql);
 		}
 		$this->ensureColumn($this->agentTable,'homeDir',"varchar(200) NOT NULL DEFAULT ''");

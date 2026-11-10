@@ -80,12 +80,31 @@ kodReady.push(function(){
 		}).fail(function(xhr){Tips.close();Tips.tips((xhr.responseJSON&&xhr.responseJSON.data)||'更新失败','warning');});
 	}
 
+	function mirrorStatus(){
+		$.get('{{mirrorApi}}',{op:'status'}).done(function(r){if(!r.code){Tips.tips(r.data||'读取镜像状态失败','warning');return;}
+			var d=r.data,owners=(d.owners||[]).map(function(o){return o.name+(o.exists?'':'（账号不存在）');}).join('、');
+			var safe=function(v){return $('<div>').text(v==null?'':String(v)).html();};
+			var html='<div class="aidrive-space-note">真人用户空间的本地文件会自动镜像到百度网盘「AI-Drive镜像」目录（严格单向：只上传，绝不下载回服务器）。删除的文件在百度网盘「AI-Drive镜像回收站」保留，可随时找回。</div>'+
+				'<div class="aidrive-cards"><div class="aidrive-card"><b>'+(d.enabled?'已启用':'未启用')+'</b>镜像开关</div><div class="aidrive-card"><b>'+Number(d.byState.synced||0)+'</b>已同步</div><div class="aidrive-card"><b>'+Number(d.byState.pending||0)+'</b>排队中</div><div class="aidrive-card"><b>'+Number(d.byState.failed||0)+'</b>失败</div><div class="aidrive-card"><b>'+Number(d.byState.deleted||0)+'</b>已删除(百度保留)</div></div>'+
+				'<div class="aidrive-space-note">镜像对象：'+safe(owners||'（未配置）')+(d.lastError?'<br>最近错误：'+safe(d.lastError):'')+'</div>'+
+				'<p><button class="btn btn-default aidrive-mirror-reconcile">扫描差异并排队</button> <button class="btn btn-default aidrive-mirror-process">立即处理队列</button> <button class="btn btn-default aidrive-mirror-retry">重试失败项</button> <button class="btn btn-default aidrive-mirror-users">设置镜像用户</button></p>';
+			var dialog=$.dialog({title:'百度网盘镜像（v0.9.0）',width:700,height:420,content:html,cancelVal:'关闭',cancel:true});
+			dialog.$main.on('click','.aidrive-mirror-reconcile',function(){Tips.loading('正在扫描差异…');$.post('{{mirrorApi}}',JSON.stringify({op:'reconcile'}),null,'json').always(function(){Tips.close();dialog.close();mirrorStatus();});});
+			dialog.$main.on('click','.aidrive-mirror-process',function(){$.post('{{mirrorApi}}',JSON.stringify({op:'process',limit:50}),null,'json').done(function(x){Tips.tips(x.code?('已处理 '+x.data.processed+' 项（成功 '+x.data.synced+'，失败 '+x.data.failed+'）'):(x.data||'处理失败'));});});
+			dialog.$main.on('click','.aidrive-mirror-retry',function(){$.post('{{mirrorApi}}',JSON.stringify({op:'retry'}),null,'json').done(function(x){Tips.tips(x.code?('已重新排队 '+x.data.requeued+' 项'):'操作失败');});});
+			dialog.$main.on('click','.aidrive-mirror-users',function(){
+				var current=(d.owners||[]).filter(function(o){return o.type==='user'&&o.exists;}).map(function(o){return o.name;}).join(',');
+				var dialog2=$.dialog({title:'设置镜像用户（逗号分隔的用户名）',width:460,content:'<input class="aidrive-mirror-users-input" style="width:100%;height:36px;padding:6px 10px" value="'+safe(current)+'" placeholder="例如：admin,sbuxcn">',
+					okVal:'保存',ok:function(){var users=dialog2.$main.find('.aidrive-mirror-users-input').val();$.post('{{mirrorApi}}',JSON.stringify({op:'setusers',users:users}),null,'json').done(function(x){Tips.tips(x.code?'已保存':'保存失败');});dialog2.close();setTimeout(mirrorStatus,300);return false;},cancel:true});
+			});
+		}).fail(function(xhr){Tips.tips('读取镜像状态失败','warning');});
+	}
 	function mountButton(){
 		if(!window.Router||String(Router.hash).indexOf('admin/user')!==0)return;
 		var $native=$('[data-action="user-add"]').first();if(!$native.length||$('.aidrive-agent-btn').length)return;
 		var $group=$('<div class="btn-group btn-group-sm ml-10"><button type="button" class="btn aidrive-agent-btn"><i class="font-icon ri-robot-2-line mr-5"></i>新建智能体</button><button type="button" class="btn btn-default aidrive-manage-btn"><i class="font-icon ri-dashboard-line mr-5"></i>Agent 控制台</button><button type="button" class="btn btn-default aidrive-guide-btn"><i class="font-icon ri-book-open-line mr-5"></i>帮助中心</button><button type="button" class="btn btn-default aidrive-maintenance-btn"><i class="font-icon ri-shield-check-line mr-5"></i>数据保护</button><button type="button" class="btn btn-default aidrive-update-btn"><i class="font-icon ri-refresh-line mr-5"></i>检查更新</button><button type="button" class="btn btn-default aidrive-history-btn"><i class="font-icon ri-history-line mr-5"></i>更新历史</button></div>');
-		$group.append('<button type="button" class="btn btn-default aidrive-jobs-btn">上传任务</button><button type="button" class="btn btn-default aidrive-app-backup-btn">应用备份</button>');
-		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-manage-btn').on('click',manageAgents);$group.find('.aidrive-guide-btn').on('click',function(){window.open('https://github.com/13220103449/ai-drive-kodbox/blob/main/docs/README.md','_blank');});$group.find('.aidrive-maintenance-btn').on('click',maintenance);$group.find('.aidrive-update-btn').on('click',checkUpdate);$group.find('.aidrive-history-btn').on('click',updateHistory);$group.find('.aidrive-jobs-btn').on('click',uploadJobs);$group.find('.aidrive-app-backup-btn').on('click',applicationBackups);
+		$group.append('<button type="button" class="btn btn-default aidrive-mirror-btn">百度镜像</button>');
+		$native.closest('.btn-group').after($group);$group.find('.aidrive-agent-btn').on('click',createAgent);$group.find('.aidrive-manage-btn').on('click',manageAgents);$group.find('.aidrive-guide-btn').on('click',function(){window.open('https://github.com/13220103449/ai-drive-kodbox/blob/main/docs/README.md','_blank');});$group.find('.aidrive-maintenance-btn').on('click',maintenance);$group.find('.aidrive-update-btn').on('click',checkUpdate);$group.find('.aidrive-history-btn').on('click',updateHistory);$group.find('.aidrive-mirror-btn').on('click',mirrorStatus);
 	}
 	setInterval(mountButton,500);mountButton();
 });

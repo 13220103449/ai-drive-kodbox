@@ -74,3 +74,24 @@ CREATE TABLE IF NOT EXISTS `plugin_ai_drive_request` (
   `response` mediumtext NOT NULL, `createTime` int(11) unsigned NOT NULL,
   PRIMARY KEY (`id`), UNIQUE KEY `agentRequest` (`agentID`,`requestID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI Drive idempotent request results';
+CREATE TABLE IF NOT EXISTS `plugin_ai_drive_mirror` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `ownerType` smallint(5) unsigned NOT NULL DEFAULT 1,
+  `ownerID` bigint(20) unsigned NOT NULL,
+  `sourceID` bigint(20) unsigned NOT NULL,
+  `relPath` varchar(1000) NOT NULL,
+  `isFolder` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `size` bigint(20) unsigned NOT NULL DEFAULT 0,
+  `modifyTime` int(11) unsigned NOT NULL DEFAULT 0,
+  `baiduPath` varchar(1200) NOT NULL DEFAULT '',
+  `state` varchar(16) NOT NULL DEFAULT 'pending',
+  `attempts` int(11) unsigned NOT NULL DEFAULT 0,
+  `nextAttemptAt` int(11) unsigned NOT NULL DEFAULT 0,
+  `lastError` varchar(500) NOT NULL DEFAULT '',
+  `createTime` int(11) unsigned NOT NULL,
+  `updatedAt` int(11) unsigned NOT NULL,
+  `syncedAt` int(11) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_path` (`ownerType`,`ownerID`,`relPath`(255)),
+  KEY `state_next` (`state`,`nextAttemptAt`)
+);

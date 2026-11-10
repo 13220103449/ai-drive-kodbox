@@ -88,3 +88,24 @@ CREATE TABLE IF NOT EXISTS "plugin_ai_drive_request" (
   "createTime" integer NOT NULL,
   UNIQUE ("agentID","requestID")
 );
+
+CREATE TABLE IF NOT EXISTS "plugin_ai_drive_mirror" (
+  "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+  "ownerType" smallint NOT NULL DEFAULT 1,
+  "ownerID" integer NOT NULL,
+  "sourceID" integer NOT NULL,
+  "relPath" varchar(1000) NOT NULL,
+  "isFolder" smallint NOT NULL DEFAULT 0,
+  "size" integer NOT NULL DEFAULT 0,
+  "modifyTime" integer NOT NULL DEFAULT 0,
+  "baiduPath" varchar(1200) NOT NULL DEFAULT '',
+  "state" varchar(16) NOT NULL DEFAULT 'pending',
+  "attempts" integer NOT NULL DEFAULT 0,
+  "nextAttemptAt" integer NOT NULL DEFAULT 0,
+  "lastError" varchar(500) NOT NULL DEFAULT '',
+  "createTime" integer NOT NULL,
+  "updatedAt" integer NOT NULL,
+  "syncedAt" integer NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_mirror_user_path" ON "plugin_ai_drive_mirror" ("ownerType","ownerID","relPath");
+CREATE INDEX IF NOT EXISTS "idx_mirror_state" ON "plugin_ai_drive_mirror" ("state","nextAttemptAt");

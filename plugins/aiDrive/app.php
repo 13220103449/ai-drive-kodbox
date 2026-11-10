@@ -18,14 +18,57 @@ class aiDrivePlugin extends PluginBase {
 			'{{updateCheckApi}}'=>$this->pluginApi.'updateCheck',
 			'{{updateInstallApi}}'=>$this->pluginApi.'updateInstall',
 			'{{updateHistoryApi}}'=>$this->pluginApi.'updateHistory',
-			'{{updateRollbackApi}}'=>$this->pluginApi.'updateRollback'
+			'{{updateRollbackApi}}'=>$this->pluginApi.'updateRollback',
+			'{{mirrorApi}}'=>$this->pluginApi.'mirror'
 		));
 	}
 	public function onChangeStatus($status){if($status){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();}}
 	public function onSetConfig($config){$this->store()->initTable();$this->store()->ensureAgentDepartment();$this->store()->enableWebdav();return $config;}
 	public function route(){if(strtolower(MOD.'.'.ST)==='plugin.aidrive' && strtolower(ACT)==='api') $this->api();}
 
-	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.8.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths','share-transfer','shared-agent-home-directories','storage-acceptance-check')));}
+	public function health(){show_json(array('service'=>'AI Drive Agent API','version'=>'0.9.0','status'=>'ok','kodbox'=>defined('KOD_VERSION')?KOD_VERSION:null,'features'=>array('agent-dashboard','audit','overlapping-tokens','storage-recycle-bin','storage-file-versions','update-rollback','recursive-storage-driver-bootstrap','mcp-upload-sha256-verification','binary-acceptance-tests','metadata-backup-scope-disclosed','role-based-documentation-hub','verified-version-restore','webdav-mounted-driver-bootstrap','canonical-upload-version-paths','share-transfer','shared-agent-home-directories','storage-acceptance-check','baidu-mirror-engine','mirror-disaster-readthrough')));}
+	public function mirrorEngine(){include_once($this->pluginPath.'lib/MirrorEngine.class.php');return new AiDriveMirrorEngine($this);}
+
+	/** Admin-facing mirror control: op=status|reconcile|process|retry|enable|disable|setusers. */
+	public function mirror(){
+		KodUser::checkRoot();$this->store()->initTable();
+		$engine=$this->mirrorEngine();$body=$this->jsonBody();
+		$op=strtolower(_get($body,'op',_get($this->in,'op','status')));
+		try{
+			switch($op){
+				case 'status': show_json($engine->stats());break;
+				case 'reconcile': show_json($engine->reconcileAll());break;
+				case 'process': show_json($engine->processPending(intval(_get($body,'limit',20))));break;
+				case 'retry': show_json($engine->retryFailed());break;
+				case 'enable': case 'disable':{
+					$config=$this->getConfig();$config['mirrorEnabled']=$op==='enable'?'1':'0';
+					Model('Plugin')->setConfig('aiDrive',$config);show_json(array('mirrorEnabled'=>$config['mirrorEnabled']));
+					break;}
+				case 'setusers':{
+					$users=trim(strval(_get($body,'users','')));
+					$config=$this->getConfig();$config['mirrorUsers']=$users;
+					Model('Plugin')->setConfig('aiDrive',$config);show_json(array('mirrorUsers'=>$users));
+					break;}
+				default: show_json('unknown op; use status|reconcile|process|retry|enable|disable|setusers',false);
+			}
+		}catch(Throwable $error){show_json($error->getMessage(),false);}
+	}
+
+	/** Queue worker entry (cron): consume mirror tasks and run the periodic reconcile. */
+	public function runMirrorWorker(){
+		$engine=$this->mirrorEngine();
+		if(!$engine->isEnabled()) return array('processed'=>0,'reason'=>'mirror disabled');
+		$c=$engine->config();
+		$result=$engine->processPending($c['batchSize']);
+		$config=$this->getConfig();
+		$last=intval(_get($config,'mirrorLastReconcile',0));
+		if(time()-$last>=$c['reconcileMinutes']*60){
+			try{$result['reconcile']=$engine->reconcileAll();}catch(Throwable $error){$result['reconcileError']=$error->getMessage();}
+			$fresh=$this->getConfig();$fresh['mirrorLastReconcile']=strval(time());
+			Model('Plugin')->setConfig('aiDrive',$fresh);
+		}
+		return $result;
+	}
 	public function department(){KodUser::checkRoot();show_json($this->store()->ensureAgentDepartment());}
 	public function webdav(){KodUser::checkRoot();show_json($this->store()->enableWebdav());}
 
@@ -244,7 +287,10 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,$this->relativePath($path,$root),$path);
 		}
 		$path=$this->agentPath($root,$relativeInput);
-		if(!$path) return $this->notFound($agent,$action,'parent folder not found',$relativeInput);
+		if(!$path){
+			if($this->mirrorFallbackOutput($space,$relativeInput,$action==='download')) exit;
+			return $this->notFound($agent,$action,'parent folder not found',$relativeInput);
+		}
 		if($action==='list'){
 			$info=IO::infoFull($path);if(!$info || $info['type']!=='folder') return $this->notFound($agent,$action,'folder not found',$relativeInput);
 			return $this->success($agent,$action,$this->listResult(IO::listPath($path),$root),$path);
@@ -254,14 +300,26 @@ class aiDrivePlugin extends PluginBase {
 			return $this->success($agent,$action,$this->fileInfo($info,$root),$path);
 		}
 		if($action==='read'){
-			$info=IO::infoFull($path);if(!$info || $info['type']!=='file') return $this->notFound($agent,$action,'file not found',$relativeInput);
+			$info=IO::infoFull($path);
+			if(!$info || $info['type']!=='file'){
+				if($this->mirrorFallbackOutput($space,$relativeInput,false)) exit;
+				return $this->notFound($agent,$action,'file not found',$relativeInput);
+			}
 			$max=min(max(intval(_get($body,'maxBytes',2*1024*1024)),1),20*1024*1024);
 			if(intval($info['size'])>$max) return $this->failure($agent,$action,'file exceeds maxBytes',$path);
-			$content=IO::fileSubstr($path,0,intval($info['size']));$base64=!!_get($body,'base64',false);
+			$content=false;
+			try{$content=IO::fileSubstr($path,0,intval($info['size']));}catch(Throwable $error){$content=false;}
+			if($content===false&&$this->mirrorFallbackOutput($space,$relativeInput,false)) exit;
+			if($content===false) return $this->notFound($agent,$action,'file not found',$relativeInput);
+			$base64=!!_get($body,'base64',false);
 			return $this->success($agent,$action,array('path'=>$this->relativePath($path,$root),'encoding'=>$base64?'base64':'utf-8','content'=>$base64?base64_encode($content):$content),$path);
 		}
 		if($action==='download'){
-			$info=IO::infoFull($path);if(!$info || $info['type']!=='file') return $this->notFound($agent,$action,'file not found',$relativeInput);
+			$info=IO::infoFull($path);
+			if(!$info || $info['type']!=='file'){
+				if($this->mirrorFallbackOutput($space,$relativeInput,true)) exit;
+				return $this->notFound($agent,$action,'file not found',$relativeInput);
+			}
 			$this->store()->audit($agent,$action,'success',$this->relativePath($path,$root));IO::fileOut($path,true,$info['name']);exit;
 		}
 		if($action==='write'){
@@ -575,4 +633,20 @@ class aiDrivePlugin extends PluginBase {
 	private function maintenanceService(){include_once($this->pluginPath.'lib/Maintenance.class.php');return new AiDriveMaintenance($this->store());}
 	private function bearerToken(){$header=_get($_SERVER,'HTTP_AUTHORIZATION','');if(!$header&&function_exists('getallheaders')){$headers=getallheaders();$header=_get($headers,'Authorization','');}return preg_match('/^Bearer\s+(.+)$/i',$header,$m)?trim($m[1]):'';}
 	private function jsonBody(){$raw=file_get_contents('php://input');$data=$raw?json_decode($raw,true):array();return is_array($data)?$data:array();}
+
+	/** Disaster read-through: when the department-space copy is missing locally, stream
+	 * the Baidu mirror copy straight to the client (never persisted server-side). */
+	private function mirrorFallbackOutput($space,$relativeInput,$download){
+		if($space!=='department') return false;
+		try{
+			$engine=$this->mirrorEngine();
+			if(!$engine->isEnabled()) return false;
+			$department=$engine->departmentOwner();
+			$hit=$engine->findSynced($department['ownerType'],$department['ownerID'],$relativeInput);
+			if(!$hit) return false;
+			$this->store()->audit(array('agentID'=>'mirror-fallback','userID'=>0),$download?'download':'read','success','mirror: '.$hit['baiduPath']);
+			$engine->streamFromMirror($hit['baiduPath'],$download,$hit['name']);
+			return true;
+		}catch(Throwable $error){return false;}
+	}
 }

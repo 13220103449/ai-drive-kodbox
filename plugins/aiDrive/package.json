@@ -2,13 +2,13 @@
 	"id": "aiDrive",
 	"name": "AI Drive",
 	"title": "Human + Agent unified file access",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"source": {
 		"className": "font-icon ri-robot-2-fill bg-blue-6",
 		"icon": ""
 	},
 	"category": "file",
-	"description": "智能体共享账号 + 独立 Agent 家目录、机器密钥、完整文件 API 与审计日志。",
+	"description": "智能体共享账号 + 真人空间百度网盘实时镜像 + 完整文件 API 与审计日志。",
 	"auther": {
 		"copyright": "AI Drive",
 		"homePage": ""
