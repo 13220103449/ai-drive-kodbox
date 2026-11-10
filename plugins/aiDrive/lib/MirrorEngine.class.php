@@ -133,7 +133,8 @@ class AiDriveMirrorEngine {
 				if($node['isFolder']===1)$stats['dirs']++;else $stats['queued']++;
 				continue;
 			}
-			if(intval($row['sourceID'])!==$sourceID){$this->retireRow($row,$now);$stats['retired']++;continue;} // path recreated elsewhere
+			$isDeletedRow=strval($row['state'])==='deleted';
+			if(intval($row['sourceID'])!==$sourceID&&!$isDeletedRow){$this->retireRow($row,$now);$stats['retired']++;continue;} // path recreated elsewhere (a deleted row yields to the new entry)
 			// Re-verify rows whose upload-time size check was deferred by Baidu metadata delay.
 			if(strval($row['state'])==='synced'&&strpos(strval($row['lastError']),'size verify pending')!==false&&$node['isFolder']===0){
 				$this->clearBaiduPathMeta(strval($row['baiduPath']));
@@ -145,7 +146,8 @@ class AiDriveMirrorEngine {
 					$this->upsert($ownerType,$ownerID,$sourceID,$rel,$node,$now,true);$stats['updated']++;
 				}
 			}
-			if($node['isFolder']===0&&intval($row['modifyTime'])!==intval($node['modifyTime'])&&strval($row['state'])!=='deleted'){
+			// A deleted row whose local entry reappeared (restored or recreated) re-queues.
+			if($node['isFolder']===0&&(intval($row['modifyTime'])!==intval($node['modifyTime'])||$isDeletedRow)){
 				if(!$localOnly){$stats['skippedRemote']++;continue;}
 				$this->upsert($ownerType,$ownerID,$sourceID,$rel,$node,$now,true);
 				$stats['updated']++;
@@ -193,7 +195,15 @@ class AiDriveMirrorEngine {
 	/** Local entry gone (or recreated elsewhere): move the Baidu copy into the mirror trash. */
 	private function retireRow($row,$now){
 		if(strval($row['state'])==='synced'){
-			try{$this->driver()->moveFile(strval($row['baiduPath']),$this->trashPathFor(strval($row['baiduPath'])));}catch(Throwable $e){}
+			try{
+				$trash=$this->trashPathFor(strval($row['baiduPath']));
+				// A previous delete/restore cycle may already have a same-named copy in
+				// the trash; suffix with the row id so the move never collides.
+				try{if($this->driver()->has($trash,true))$trash=preg_replace('/(\.[^.]+)?$/u','-'.intval($row['id']).'$1',$trash,1);}catch(Throwable $e){}
+				$this->driver()->moveFile(strval($row['baiduPath']),$trash);
+				$this->clearBaiduPathMeta(strval($row['baiduPath']));
+				$this->clearBaiduPathMeta($trash);
+			}catch(Throwable $e){}
 		}
 		Model($this->table)->setDataAuto(false);
 		Model($this->table)->where(array('id'=>$row['id']))->save(array('state'=>'deleted','lastError'=>'local entry removed; baidu copy moved to mirror trash','updatedAt'=>$now));
